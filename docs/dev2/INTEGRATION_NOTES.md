@@ -4,9 +4,13 @@ This file contains Dev 2 handoff guidance only. It does not modify Dev 1 or Dev 
 
 ## Contract Hash Placeholders
 
-Populate these values after Casper testnet deployment:
+Populate these values after Casper testnet deployment and share them with Dev 1 and Dev 3 from the same source of truth:
 
 ```env
+CREDIT_REGISTRY_DEPLOY_HASH=deploy-hash-todo-credit-registry
+COMPLIANCE_REGISTRY_DEPLOY_HASH=deploy-hash-todo-compliance-registry
+ORACLE_PAYWALL_DEPLOY_HASH=deploy-hash-todo-oracle-paywall
+REPUTATION_REGISTRY_DEPLOY_HASH=deploy-hash-todo-reputation-registry
 CREDIT_REGISTRY_HASH=hash-todo-credit-registry
 COMPLIANCE_REGISTRY_HASH=hash-todo-compliance-registry
 ORACLE_PAYWALL_HASH=hash-todo-oracle-paywall
@@ -19,9 +23,12 @@ Dev 3 can import:
 
 ```python
 from casper.contracts import load_contracts_from_env
+from casper.client import load_client_from_env
 from cspr_cloud.wallet import load_wallet_service_from_env
 from cspr_cloud.defi import load_defi_service_from_env
 ```
+
+These helpers should read their final values from environment variables rather than hardcoded hashes.
 
 ## Sample Normalized Wallet JSON
 
@@ -77,6 +84,28 @@ from cspr_cloud.defi import load_defi_service_from_env
 }
 ```
 
+## Sample Contract Hash Handoff JSON
+
+```json
+{
+  "network": "casper-test",
+  "deploy_hashes": {
+    "credit_registry": "deploy-hash-todo-credit-registry",
+    "compliance_registry": "deploy-hash-todo-compliance-registry",
+    "oracle_paywall": "deploy-hash-todo-oracle-paywall",
+    "reputation_registry": "deploy-hash-todo-reputation-registry"
+  },
+  "contract_hashes": {
+    "credit_registry": "hash-todo-credit-registry",
+    "compliance_registry": "hash-todo-compliance-registry",
+    "oracle_paywall": "hash-todo-oracle-paywall",
+    "reputation_registry": "hash-todo-reputation-registry"
+  },
+  "x402_mode": "mock",
+  "cspr_cloud_mode": "mock"
+}
+```
+
 ## For Dev 1 Review
 
 Suggested gateway/server snippet if the frontend needs a paid profile preview route later:
@@ -93,7 +122,9 @@ payment_requirement = verifier.build_payment_requirement()
 Notes:
 
 - Do not expose private keys or CSPR.cloud keys to the browser.
+- Read final contract hashes from `CREDIT_REGISTRY_HASH`, `COMPLIANCE_REGISTRY_HASH`, `ORACLE_PAYWALL_HASH`, and `REPUTATION_REGISTRY_HASH`.
 - Do not treat `mock` x402 verification as real settlement.
+- Mainnet CSPR is not required for the MVP.
 
 ## For Dev 3 Review
 
@@ -105,6 +136,7 @@ from cspr_cloud.wallet import load_wallet_service_from_env
 from cspr_cloud.defi import load_defi_service_from_env
 
 contracts = load_contracts_from_env()
+client = load_client_from_env()
 wallet_service = load_wallet_service_from_env()
 defi_service = load_defi_service_from_env()
 
@@ -114,6 +146,11 @@ defi_summary = defi_service.get_liquidity_positions(account_hash)
 
 Notes:
 
+- Read final contract hashes from environment variables, not source code.
+- Use `load_client_from_env()` if deploy/network diagnostics are needed.
 - Treat `warning` fields as mode indicators during scoring.
+- Treat `X402_MODE=mock` as simulated payment verification only.
+- Treat `CSPR_CLOUD_MODE=mock` as demo fallback data only.
 - Swap mock/live CSPR.cloud modes via environment variables only.
 - Replace placeholder contract hashes after testnet deployment before calling write paths.
+- Mainnet CSPR is not required for the MVP.

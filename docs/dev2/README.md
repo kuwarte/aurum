@@ -2,6 +2,8 @@
 
 This document tracks the Dev 2 scope for Aurum Protocol: Rust contract logic, Casper data-layer helpers, CSPR.cloud wrappers, x402 payment support scaffolding, deployment helpers, and teammate integration notes. The work in this folder stays within the allowed Dev 2 ownership boundary and does not modify Dev 1 or Dev 3 application code.
 
+The deployment guidance in this folder follows the repository-local `.agents` Casper, Odra, x402, CSPR.cloud, and security skills now present in this repository.
+
 ## Scope Summary
 
 Implemented in this branch:
@@ -67,10 +69,12 @@ Combined verification:
 
 ## Deploy Preparation
 
-The included deployment script intentionally stops at local build preparation and environment validation. The exact Odra deploy commands remain a TODO because this repo does not yet pin the final Odra CLI version or package layout.
+The included deployment flow now covers environment validation, Rust build/test steps, Python compile checks, deployment preparation, and handoff instructions. The exact Odra deploy commands remain a TODO because this repo does not yet pin the final Odra CLI version or package layout.
 
 ```bash
+./scripts/check-dev2-env.sh --deploy
 ./scripts/deploy-contracts.sh
+./scripts/verify-contracts.sh
 ```
 
 Casper testnet CSPR is required for:
