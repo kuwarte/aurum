@@ -1,12 +1,12 @@
-# Sentinel
+# Aurum Protocol
 
-Sentinel is an autonomous AI credit bureau built on Casper Network. It gives every wallet, AI agent, DAO, freelancer, and business a verifiable on-chain credit profile — scored continuously by a network of specialized AI agents, queryable by any DeFi lending protocol via x402 micropayments, with zero human underwriters in the loop.
+Aurum is an autonomous AI credit bureau built on Casper Network. It gives every wallet, AI agent, DAO, freelancer, and business a verifiable on-chain credit profile — scored continuously by a network of specialized AI agents, queryable by any DeFi lending protocol via x402 micropayments, with zero human underwriters in the loop.
 
 ---
 
 ## What it does
 
-Traditional credit bureaus are centralized, opaque, and geographically siloed. They are completely inaccessible to the autonomous agent economy. Sentinel replaces them with an open, autonomous, on-chain alternative built natively on Casper's x402 payment infrastructure and Odra smart contract framework.
+Traditional credit bureaus are centralized, opaque, and geographically siloed. They are completely inaccessible to the autonomous agent economy. Aurum replaces them with an open, autonomous, on-chain alternative built natively on Casper's x402 payment infrastructure and Odra smart contract framework.
 
 Every subject — wallet, AI agent, DAO, or business — is evaluated across six dimensions:
 
@@ -17,13 +17,13 @@ Every subject — wallet, AI agent, DAO, or business — is evaluated across six
 - RWA ownership: tokenized invoices, rental income streams, business receivables
 - Income consistency: regularity and growth of incoming stablecoin and CSPR flows
 
-From those inputs, Sentinel produces a credit score from 0 to 1000, a risk tier (A, B, C, D), a default probability over 30/60/90 days, a borrowing limit recommendation, and a ComplianceToken indicating KYC/AML status. All of this is minted as a CreditScore NFT on Casper and queryable by any protocol via a paid x402 oracle endpoint.
+From those inputs, Aurum produces a credit score from 0 to 1000, a risk tier (A, B, C, D), a default probability over 30/60/90 days, a borrowing limit recommendation, and a ComplianceToken indicating KYC/AML status. All of this is minted as a CreditScore NFT on Casper and queryable by any protocol via a paid x402 oracle endpoint.
 
 ---
 
 ## Agent architecture
 
-Sentinel runs six specialized autonomous agents in a coordinated LangGraph pipeline. Each agent has a distinct responsibility and scoped contract permissions so that compromise of one agent does not compromise the system.
+Aurum runs six specialized autonomous agents in a coordinated LangGraph pipeline. Each agent has a distinct responsibility and scoped contract permissions so that compromise of one agent does not compromise the system.
 
 **Credit Agent** — pulls wallet history from CSPR.cloud, runs the XGBoost scoring model, produces a composite score 0-1000 with SHAP feature breakdown.
 
