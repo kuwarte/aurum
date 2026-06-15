@@ -1,0 +1,49 @@
+# virtual environment
+.venv/
+
+# environment variables
+.env
+.env.local
+.env.*.local
+
+# python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# model artifacts
+scoring/model.json
+scoring/*.json
+
+# keys — never commit private keys
+keys/
+*.pem
+*.key
+
+# pytest
+.pytest_cache/
+pytest.ini
+htmlcov/
+.coverage
+
+# logs
+*.log
+logs/
+
+# editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# os
+.DS_Store
+Thumbs.db
+
+# supabase local
+.supabase/
+
+# temp files
+tmp/
+temp/
