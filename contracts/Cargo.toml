@@ -1,0 +1,17 @@
+[workspace]
+members = [
+    "credit_registry",
+    "compliance_registry",
+    "oracle_paywall",
+    "reputation_registry",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+version = "0.1.0"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"
