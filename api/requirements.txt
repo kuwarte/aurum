@@ -6,3 +6,4 @@ xgboost
 numpy
 python-dotenv
 httpx
+supabase
