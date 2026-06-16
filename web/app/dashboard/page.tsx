@@ -3,9 +3,22 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
+import { useAppPreferences } from "@/lib/app-preferences";
+import {
+  formatCurrencyWithEstimate,
+} from "@/lib/currency";
 import { useWalletSession } from "@/lib/use-wallet-session";
 
-const STATS = [
+type DashboardStat = {
+  label: string;
+  value?: string;
+  valueUsd?: number;
+  delta: string;
+  deltaUp: boolean | null;
+  tone: string;
+};
+
+const STATS: DashboardStat[] = [
   {
     label: "Credit score",
     value: "784",
@@ -22,7 +35,7 @@ const STATS = [
   },
   {
     label: "Max borrow",
-    value: "$24,000",
+    valueUsd: 24000,
     delta: "3 active offers",
     deltaUp: null,
     tone: "",
@@ -62,9 +75,9 @@ const AGENTS = [
 ];
 
 const LOANS = [
-  { protocol: "TrueFi", amount: "$24,000", tier: "A", apr: "9.8% APR" },
-  { protocol: "Maple", amount: "$18,500", tier: "A", apr: "11.2% APR" },
-  { protocol: "Clearpool", amount: "$12,000", tier: "B", apr: "13.5% APR" },
+  { protocol: "TrueFi", amountUsd: 24000, tier: "A", apr: "9.8% APR" },
+  { protocol: "Maple", amountUsd: 18500, tier: "A", apr: "11.2% APR" },
+  { protocol: "Clearpool", amountUsd: 12000, tier: "B", apr: "13.5% APR" },
 ];
 
 const ACTIVITY = [
@@ -79,6 +92,9 @@ const CIRCUMFERENCE = 2 * Math.PI * 54;
 
 export default function DashboardPage() {
   const { connected, toggleWallet, walletLabel } = useWalletSession();
+  const {
+    preferences: { advancedSignals, currency, refreshWindow, showFiatEstimate },
+  } = useAppPreferences();
   const [barsAnimated, setBarsAnimated] = useState(false);
   const ringRef = useRef<SVGCircleElement>(null);
 
@@ -116,9 +132,32 @@ export default function DashboardPage() {
             {STATS.map((stat) => (
               <article key={stat.label} className="dash-stat-card aurora-border">
                 <div className="dash-stat-label">{stat.label}</div>
-                <div className={`dash-stat-value${stat.tone ? ` ${stat.tone}` : ""}`}>
-                  {stat.value}
-                </div>
+                {typeof stat.valueUsd === "number" ? (
+                  (() => {
+                    const displayAmount = formatCurrencyWithEstimate(
+                      stat.valueUsd,
+                      currency,
+                      showFiatEstimate,
+                    );
+
+                    return (
+                      <>
+                        <div className={`dash-stat-value${stat.tone ? ` ${stat.tone}` : ""}`}>
+                          {displayAmount.primary}
+                        </div>
+                        {displayAmount.secondary ? (
+                          <div className="money-secondary dash-stat-secondary">
+                            {displayAmount.secondary}
+                          </div>
+                        ) : null}
+                      </>
+                    );
+                  })()
+                ) : (
+                  <div className={`dash-stat-value${stat.tone ? ` ${stat.tone}` : ""}`}>
+                    {stat.value}
+                  </div>
+                )}
                 <div className={`dash-stat-delta${stat.deltaUp ? " is-up" : ""}`}>
                   {stat.delta}
                 </div>
@@ -132,7 +171,7 @@ export default function DashboardPage() {
                 <span className="dash-panel-title">Live confidence</span>
                 <span className="dash-live-badge">
                   <span className="dash-pill-dot" />
-                  Live
+                  {refreshWindow}
                 </span>
               </div>
 
@@ -188,6 +227,24 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
+
+              {advancedSignals ? (
+                <div className="dash-advanced-signals">
+                  <div className="dash-dimensions-head">Advanced signals</div>
+                  <div className="score-row">
+                    <header>
+                      <strong>Model blend</strong>
+                      <span className="agent-subtitle">Behavior 64% • Risk 22% • Collateral 14%</span>
+                    </header>
+                  </div>
+                  <div className="score-row">
+                    <header>
+                      <strong>Monitor confidence</strong>
+                      <span className="agent-subtitle">0.94 ensemble agreement across active agents</span>
+                    </header>
+                  </div>
+                </div>
+              ) : null}
             </article>
 
             <div className="dash-right-col">
@@ -196,7 +253,7 @@ export default function DashboardPage() {
                   <span className="dash-panel-title">Agent pipeline</span>
                   <span className="dash-live-badge">
                     <span className="dash-pill-dot" />
-                    5 running
+                    {refreshWindow === "Live" ? "5 running" : `5 running • ${refreshWindow}`}
                   </span>
                 </div>
 
@@ -236,7 +293,9 @@ export default function DashboardPage() {
                         className="dash-offer-row"
                       >
                         <span className="dash-offer-protocol">{loan.protocol}</span>
-                        <span className="dash-offer-amount">{loan.amount}</span>
+                        <span className="dash-offer-amount">
+                          {formatCurrencyWithEstimate(loan.amountUsd, currency, false).primary}
+                        </span>
                         <span className={`dash-offer-tier tier-${loan.tier.toLowerCase()}`}>
                           Tier {loan.tier}
                         </span>

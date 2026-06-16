@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import {
+  resolveDefaultViewHref,
+  useAppPreferences,
+} from "@/lib/app-preferences";
 
 const NAV_LINKS = [
   { label: "Loan Offers", href: "/loan-offers" },
@@ -12,6 +16,9 @@ const NAV_LINKS = [
 export function Navbar() {
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
+  const {
+    preferences: { defaultView },
+  } = useAppPreferences();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -49,7 +56,7 @@ export function Navbar() {
               <span className="site-network-pill__dot" />
               Casper Testnet
             </span>
-            <Link href="/dashboard" className="site-header__cta">
+            <Link href={resolveDefaultViewHref(defaultView)} className="site-header__cta">
               Launch App
             </Link>
           </div>

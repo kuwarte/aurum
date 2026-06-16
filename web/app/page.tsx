@@ -2,10 +2,18 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAppPreferences } from "@/lib/app-preferences";
+import { formatCurrencyAmount } from "@/lib/currency";
 import { shapFactors } from "@/lib/aurum-data";
 
-const STATS = [
-  { value: "$2.7T", label: "Global trade finance gap" },
+type LandingStat = {
+  label: string;
+  value?: string;
+  valueUsd?: number;
+};
+
+const STATS: LandingStat[] = [
+  { valueUsd: 2.7e12, label: "Global trade finance gap" },
   { value: "1.4B", label: "Unbanked adults on-chain" },
   { value: "6", label: "Autonomous scoring agents" },
   { value: "0", label: "Human underwriters" },
@@ -229,6 +237,9 @@ function Cell({ val }: { val: boolean | null }) {
 }
 
 export default function Home() {
+  const {
+    preferences: { currency },
+  } = useAppPreferences();
   const ringRef = useRef<SVGCircleElement>(null);
   const heroRef = useRef<HTMLElement>(null);
   const [activeFactorIndex, setActiveFactorIndex] = useState(0);
@@ -434,7 +445,7 @@ export default function Home() {
               </div>
               <div className="landing-score-grid-cell">
                 <span>Max offer</span>
-                <strong>$24,000</strong>
+                <strong>{formatCurrencyAmount(24000, currency)}</strong>
               </div>
             </div>
 
@@ -463,7 +474,11 @@ export default function Home() {
         <div className="landing-stats-bar-inner">
           {STATS.map((stat) => (
             <div key={stat.label} className="landing-stat-item">
-              <div className="landing-stat-value">{stat.value}</div>
+              <div className="landing-stat-value">
+                {typeof stat.valueUsd === "number"
+                  ? formatCurrencyAmount(stat.valueUsd, currency, { compact: true })
+                  : stat.value}
+              </div>
               <div className="landing-stat-label">{stat.label}</div>
             </div>
           ))}

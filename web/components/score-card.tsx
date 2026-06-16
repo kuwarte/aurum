@@ -9,7 +9,7 @@ export function ScoreCard() {
       <div className="score-label">{scoreSnapshot.tier} confidence tier</div>
       <div className="score-trend">+{scoreSnapshot.delta} vs prior cycle</div>
       <div className="header-actions">
-        <Link className="btn btn-secondary" href="/#score-breakdown">
+        <Link className="btn btn-secondary" href="/score-breakdown">
           Open SHAP breakdown
         </Link>
       </div>

@@ -20,7 +20,7 @@ const NAV: NavGroup[] = [
     items: [
       { label: "Dashboard", href: "/dashboard" },
       { label: "Score Logic", href: "/score-breakdown" },
-      { label: "Agents", badge: "6" },
+      { label: "Agents", href: "/agents", badge: "6" },
     ],
   },
   {
@@ -28,13 +28,13 @@ const NAV: NavGroup[] = [
     items: [
       { label: "RWA Portfolio", href: "/portfolio" },
       { label: "Loan Offers", href: "/loan-offers" },
-      { label: "History" },
+      { label: "History", href: "/history" },
     ],
   },
   {
     group: "System",
     items: [
-      { label: "Compliance" },
+      { label: "Compliance", href: "/compliance" },
       { label: "Settings", href: "/settings" },
     ],
   },

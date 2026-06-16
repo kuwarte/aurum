@@ -1,10 +1,17 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import {
+  resolveDefaultViewHref,
+  useAppPreferences,
+} from "@/lib/app-preferences";
 import { useWalletSession } from "@/lib/use-wallet-session";
 
 export function WalletConnect() {
   const router = useRouter();
+  const {
+    preferences: { defaultView },
+  } = useAppPreferences();
   const {
     connected,
     connectError,
@@ -28,9 +35,9 @@ export function WalletConnect() {
           <button
             type="button"
             className="wallet-button primary"
-            onClick={connected ? () => router.push("/dashboard") : toggleWallet}
+            onClick={connected ? () => router.push(resolveDefaultViewHref(defaultView)) : toggleWallet}
           >
-            {connected ? "Open dashboard" : isConnecting ? "Connecting..." : "Connect wallet"}
+            {connected ? "Open app" : isConnecting ? "Connecting..." : "Connect wallet"}
           </button>
           {connected ? (
             <button
