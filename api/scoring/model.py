@@ -1,5 +1,5 @@
 """
-XGBoost credit scoring model with synthetic training data.
+XGBOOST CREDIT SCORING MODEL (w/ SYNTHETIC TRAINING DATA)
 
 Scores wallets on a scale of 0-1000 based on six credit dimensions:
   - repayment: Historical loan repayment records
@@ -16,30 +16,25 @@ import numpy as np
 import xgboost as xgb
 from typing import Tuple, Dict
 
-# ============================================================================
-# Synthetic Data Generation
-# ============================================================================
 
 def generate_synthetic_training_data(n_samples: int = 500) -> Tuple[np.ndarray, np.ndarray]:
     """
     Generate realistic synthetic wallet profiles for training.
     Returns (features, labels) where labels are binary (default=1, repay=0).
     """
-    np.random.seed(42)  # Reproducible for hackathon
+    np.random.seed(42)
     
     features = []
     labels = []
     
     for i in range(n_samples):
-        # Generate correlated wallet dimensions
-        repayment_score = np.random.beta(8, 2) * 100  # Skew toward high repayment
-        wallet_activity = np.random.normal(70, 15)     # Activity level
-        defi_engagement = np.random.normal(60, 20)     # DeFi behavior
-        dao_participation = np.random.normal(50, 25)   # DAO participation
-        rwa_ownership = np.random.normal(40, 20)       # RWA holdings
-        income_consistency = np.random.normal(75, 15)  # Income regularity
+        repayment_score = np.random.beta(8, 2) * 100
+        wallet_activity = np.random.normal(70, 15)
+        defi_engagement = np.random.normal(60, 20)
+        dao_participation = np.random.normal(50, 25)
+        rwa_ownership = np.random.normal(40, 20)
+        income_consistency = np.random.normal(75, 15)
         
-        # Clamp to 0-100
         features.append([
             np.clip(repayment_score, 0, 100),
             np.clip(wallet_activity, 0, 100),
@@ -49,20 +44,14 @@ def generate_synthetic_training_data(n_samples: int = 500) -> Tuple[np.ndarray, 
             np.clip(income_consistency, 0, 100),
         ])
         
-        # Default probability: inverse correlation with avg score
         avg_score = np.mean(features[-1])
         default_prob = (100 - avg_score) / 100
         
-        # Label: 1 = will default, 0 = will repay (add noise)
         label = 1 if (np.random.random() < default_prob + np.random.normal(0, 0.1)) else 0
         labels.append(label)
     
     return np.array(features), np.array(labels)
 
-
-# ============================================================================
-# Model Training & Prediction
-# ============================================================================
 
 class CreditScoreModel:
     """XGBoost model for credit scoring."""
@@ -97,25 +86,11 @@ class CreditScoreModel:
     def predict(self, wallet_data: Dict[str, float]) -> Tuple[int, Dict[str, float]]:
         """
         Predict credit score (0-1000) and sub-scores (0-100 per dimension).
-        
-        Args:
-            wallet_data: dict with keys matching feature_names
-                {
-                    "repayment": 0-100,
-                    "wallet_activity": 0-100,
-                    "defi": 0-100,
-                    "dao": 0-100,
-                    "rwa": 0-100,
-                    "income": 0-100,
-                }
-        
-        Returns:
-            (credit_score: int, sub_scores: dict)
+        Returns (credit_score: int, sub_scores: dict).
         """
         if self.model is None:
             self.train()
         
-        # Extract features in order
         features = np.array([[
             wallet_data.get("repayment", 70),
             wallet_data.get("wallet_activity", 60),
@@ -125,20 +100,13 @@ class CreditScoreModel:
             wallet_data.get("income", 75),
         ]])
         
-        # Clamp to 0-100
         features = np.clip(features, 0, 100)
         
-        # Get default probability from model
         default_prob = float(self.model.predict_proba(features)[0][1])
-        
-        # Convert to credit score: high default prob → low score
         base_score = (1 - default_prob) * 1000
-        
-        # Weight sub-scores toward the prediction
         weighted_score = base_score * 0.7 + np.mean(features[0]) * 10 * 0.3
         credit_score = int(np.clip(weighted_score, 0, 1000))
         
-        # Sub-scores: use input + model adjustment
         sub_scores = {
             name: int(np.clip(features[0][i], 0, 100))
             for i, name in enumerate(self.feature_names)
@@ -164,7 +132,7 @@ class CreditScoreModel:
         return float(self.model.predict_proba(features)[0][1])
     
     def get_feature_importance(self) -> Dict[str, float]:
-        """Get SHAP-like feature importance as dict."""
+        """Get XGBoost feature importance as dict."""
         if self.model is None:
             self.train()
         
@@ -175,7 +143,6 @@ class CreditScoreModel:
         }
 
 
-# Global model instance
 _model = None
 
 def get_model() -> CreditScoreModel:
