@@ -100,7 +100,7 @@ export function DashboardSidebar({
             <span>{walletLabel}</span>
           </div>
           <button type="button" className="dash-wallet-status-btn" onClick={onToggleWallet}>
-            {connected ? "Disconnect wallet" : "Connect Casper Wallet"}
+            {connected ? "Disconnect wallet" : "Connect wallet"}
           </button>
         </div>
       </div>

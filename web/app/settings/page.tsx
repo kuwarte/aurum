@@ -2,24 +2,17 @@
 
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { setWalletConnected, useWalletConnected } from "@/lib/wallet-state";
-
-const MOCK_ADDRESS = "02f4...9c8a";
+import { useWalletSession } from "@/lib/use-wallet-session";
 
 export default function SettingsPage() {
-  const connected = useWalletConnected();
-
-  const toggleWallet = () => {
-    const next = !connected;
-    setWalletConnected(next);
-  };
+  const { connected, toggleWallet, walletLabel } = useWalletSession();
 
   return (
     <main className="dash-shell">
       <div className="dash-layout">
         <DashboardSidebar
           connected={connected}
-          walletLabel={connected ? MOCK_ADDRESS : "Not connected"}
+          walletLabel={walletLabel}
           onToggleWallet={toggleWallet}
         />
 

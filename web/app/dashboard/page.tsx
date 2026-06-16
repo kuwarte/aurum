@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
-import { setWalletConnected, useWalletConnected } from "@/lib/wallet-state";
+import { useWalletSession } from "@/lib/use-wallet-session";
 
 const STATS = [
   {
@@ -74,12 +74,11 @@ const ACTIVITY = [
   { title: "Risk assessed", time: "1 day ago", value: "1.2%", tone: "muted" },
 ];
 
-const MOCK_ADDRESS = "02f4...9c8a";
 const SCORE = 784;
 const CIRCUMFERENCE = 2 * Math.PI * 54;
 
 export default function DashboardPage() {
-  const connected = useWalletConnected();
+  const { connected, toggleWallet, walletLabel } = useWalletSession();
   const [barsAnimated, setBarsAnimated] = useState(false);
   const ringRef = useRef<SVGCircleElement>(null);
 
@@ -95,17 +94,12 @@ export default function DashboardPage() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  const toggleWallet = () => {
-    const next = !connected;
-    setWalletConnected(next);
-  };
-
   return (
     <main className="dash-shell">
       <div className="dash-layout">
         <DashboardSidebar
           connected={connected}
-          walletLabel={connected ? MOCK_ADDRESS : "Not connected"}
+          walletLabel={walletLabel}
           onToggleWallet={toggleWallet}
         />
 

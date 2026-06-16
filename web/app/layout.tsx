@@ -3,6 +3,7 @@ import { Manrope, Space_Grotesk } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { AppShell } from "@/components/app-shell";
+import { AurumWagmiProvider } from "@/components/wagmi-provider";
 
 const headingFont = Space_Grotesk({
   variable: "--font-heading",
@@ -44,7 +45,9 @@ export default function RootLayout({
           {themeScript}
         </Script>
         <div className="site-bg" />
-        <AppShell>{children}</AppShell>
+        <AurumWagmiProvider>
+          <AppShell>{children}</AppShell>
+        </AurumWagmiProvider>
       </body>
     </html>
   );

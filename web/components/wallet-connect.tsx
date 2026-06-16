@@ -1,40 +1,19 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-
-const MOCK_WALLET = {
-  provider: "Casper Wallet",
-  address: "02f4...9c8a",
-};
-
-function subscribe(callback: () => void) {
-  window.addEventListener("storage", callback);
-  window.addEventListener("aurum-wallet-change", callback);
-
-  return () => {
-    window.removeEventListener("storage", callback);
-    window.removeEventListener("aurum-wallet-change", callback);
-  };
-}
-
-function getSnapshot() {
-  return window.localStorage.getItem("aurum-wallet-connected") === "true";
-}
+import { useWalletSession } from "@/lib/use-wallet-session";
 
 export function WalletConnect() {
-  const connected = useSyncExternalStore(subscribe, getSnapshot, () => false);
   const router = useRouter();
-
-  const connectWallet = () => {
-    window.localStorage.setItem("aurum-wallet-connected", "true");
-    window.dispatchEvent(new Event("aurum-wallet-change"));
-  };
-
-  const disconnectWallet = () => {
-    window.localStorage.removeItem("aurum-wallet-connected");
-    window.dispatchEvent(new Event("aurum-wallet-change"));
-  };
+  const {
+    connected,
+    connectError,
+    isConnecting,
+    providerLabel,
+    statusText,
+    toggleWallet,
+    walletLabel,
+  } = useWalletSession();
 
   return (
     <article className="wallet-panel aurora-border">
@@ -49,15 +28,15 @@ export function WalletConnect() {
           <button
             type="button"
             className="wallet-button primary"
-            onClick={connected ? () => router.push("/dashboard") : connectWallet}
+            onClick={connected ? () => router.push("/dashboard") : toggleWallet}
           >
-            {connected ? "Open dashboard" : "Connect Casper Wallet"}
+            {connected ? "Open dashboard" : isConnecting ? "Connecting..." : "Connect wallet"}
           </button>
           {connected ? (
             <button
               type="button"
               className="wallet-button secondary"
-              onClick={disconnectWallet}
+              onClick={toggleWallet}
             >
               Disconnect
             </button>
@@ -68,27 +47,29 @@ export function WalletConnect() {
       <div className="wallet-shell">
         <span className="wallet-pill">
           <span className="status-dot status-live" />
-          {connected ? "Connected session" : "Awaiting wallet session"}
+          {statusText}
         </span>
 
         <div className="wallet-stats">
           <div>
             <span>Provider</span>
-            <strong>{connected ? MOCK_WALLET.provider : "Not connected"}</strong>
+            <strong>{providerLabel}</strong>
           </div>
           <div>
             <span>Wallet</span>
-            <strong>{connected ? MOCK_WALLET.address : "----"}</strong>
+            <strong>{connected ? walletLabel : "----"}</strong>
           </div>
           <div>
             <span>Network</span>
-            <strong>Casper</strong>
+            <strong>{connected ? "Injected EVM" : "Waiting"}</strong>
           </div>
           <div>
             <span>Assessment</span>
-            <strong>{connected ? "Ready" : "Pending"}</strong>
+            <strong>{connected ? "Ready" : isConnecting ? "Authorizing" : "Pending"}</strong>
           </div>
         </div>
+
+        {connectError ? <p className="wallet-error">{connectError}</p> : null}
       </div>
     </article>
   );
