@@ -1,127 +1,281 @@
-import { AgentStatus } from "@/components/agent-status";
-import { Footer } from "@/components/footer";
-import { ScoreCard } from "@/components/score-card";
-import { ScoreHistory } from "@/components/score-history";
-import { scoreHistory, scoreSnapshot } from "@/lib/aurum-data";
+"use client";
+
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { DashboardSidebar } from "@/components/dashboard-sidebar";
+import { setWalletConnected, useWalletConnected } from "@/lib/wallet-state";
+
+const STATS = [
+  {
+    label: "Credit score",
+    value: "784",
+    delta: "+12 this week",
+    deltaUp: true,
+    tone: "gold",
+  },
+  {
+    label: "Risk tier",
+    value: "Tier A",
+    delta: "Top 8% of wallets",
+    deltaUp: true,
+    tone: "green",
+  },
+  {
+    label: "Max borrow",
+    value: "$24,000",
+    delta: "3 active offers",
+    deltaUp: null,
+    tone: "",
+  },
+  {
+    label: "Default prob (30d)",
+    value: "1.2%",
+    delta: "-0.4% vs last",
+    deltaUp: true,
+    tone: "green",
+  },
+];
+
+const SCORE_GRID = [
+  { label: "Tier", value: "Tier A", tone: "gold" },
+  { label: "Oracle sync", value: "12s ago", tone: "" },
+  { label: "Credential", value: "Active", tone: "green" },
+  { label: "Expires", value: "87 days", tone: "" },
+];
+
+const DIMENSIONS = [
+  { name: "Wallet activity", score: 91, tone: "green" },
+  { name: "Repayment history", score: 88, tone: "green" },
+  { name: "DeFi behavior", score: 76, tone: "gold" },
+  { name: "DAO participation", score: 82, tone: "green" },
+  { name: "RWA ownership", score: 68, tone: "gold" },
+  { name: "Income consistency", score: 85, tone: "green" },
+];
+
+const AGENTS = [
+  { name: "Credit Agent", status: "running", meta: "XGBoost - SHAP - 24h cycle", pct: 82 },
+  { name: "Risk Agent", status: "running", meta: "GBM - 30/60/90d horizon", pct: 67 },
+  { name: "Fraud Agent", status: "running", meta: "Graph analysis - Sybil detection", pct: 91 },
+  { name: "Attestation Agent", status: "running", meta: "Ed25519 - IPFS - Casper", pct: 100 },
+  { name: "Monitoring Agent", status: "running", meta: "15 min heartbeat - CSPR.cloud", pct: 55 },
+  { name: "Lending Agent", status: "standby", meta: "x402 - LangGraph - Casper MCP", pct: 22 },
+];
+
+const LOANS = [
+  { protocol: "TrueFi", amount: "$24,000", tier: "A", apr: "9.8% APR" },
+  { protocol: "Maple", amount: "$18,500", tier: "A", apr: "11.2% APR" },
+  { protocol: "Clearpool", amount: "$12,000", tier: "B", apr: "13.5% APR" },
+];
+
+const ACTIVITY = [
+  { title: "Score updated", time: "2 hours ago", value: "+12", tone: "green" },
+  { title: "Oracle queried", time: "5 hours ago", value: "0.05 CSPR", tone: "gold" },
+  { title: "Credential renewed", time: "1 day ago", value: "Yes", tone: "green" },
+  { title: "Risk assessed", time: "1 day ago", value: "1.2%", tone: "muted" },
+];
+
+const MOCK_ADDRESS = "02f4...9c8a";
+const SCORE = 784;
+const CIRCUMFERENCE = 2 * Math.PI * 54;
 
 export default function DashboardPage() {
+  const connected = useWalletConnected();
+  const [barsAnimated, setBarsAnimated] = useState(false);
+  const ringRef = useRef<SVGCircleElement>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setBarsAnimated(true);
+      if (ringRef.current) {
+        const offset = CIRCUMFERENCE - (SCORE / 1000) * CIRCUMFERENCE;
+        ringRef.current.style.strokeDashoffset = String(offset);
+      }
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const toggleWallet = () => {
+    const next = !connected;
+    setWalletConnected(next);
+  };
+
   return (
-    <main className="subpage-shell">
-      <section className="subpage-hero aurora-border">
-        <div className="subpage-hero-copy">
-          <h1 className="subpage-title">Credit intelligence in one glance.</h1>
-          <p className="subpage-subtitle">
-            Score confidence, agent health, and underwriting momentum for the
-            connected wallet, framed with the same visual language as the landing page.
-          </p>
-        </div>
+    <main className="dash-shell">
+      <div className="dash-layout">
+        <DashboardSidebar
+          connected={connected}
+          walletLabel={connected ? MOCK_ADDRESS : "Not connected"}
+          onToggleWallet={toggleWallet}
+        />
 
-        <div className="subpage-hero-panel aurora-border">
-          <div className="subpage-panel-title">{scoreSnapshot.score}</div>
-          <p className="subpage-panel-text">
-            Wallet consistency, collateral quality, and a stable oracle window
-            continue to support a healthy lending posture.
-          </p>
-
-          <div className="subpage-metrics-grid">
-            <div className="subpage-metric-tile">
-              <span>Tier</span>
-              <strong>{scoreSnapshot.tier}</strong>
-            </div>
-            <div className="subpage-metric-tile">
-              <span>Delta</span>
-              <strong>+{scoreSnapshot.delta}</strong>
-            </div>
-            <div className="subpage-metric-tile">
-              <span>Capacity</span>
-              <strong>$24,000</strong>
-            </div>
-            <div className="subpage-metric-tile">
-              <span>Freshness</span>
-              <strong>12 sec</strong>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="subpage-summary-grid">
-        <article className="subpage-summary-card aurora-border">
-          <h2>Agents agree the wallet still looks lender-friendly.</h2>
-          <p>
-            Repayment cadence, collateral diversity, and RWA support are still
-            doing most of the work in the score profile.
-          </p>
-        </article>
-        <article className="subpage-summary-card aurora-border">
-          <h2>The latest assessment lifted confidence, not just score.</h2>
-          <p>
-            The delta is backed by healthier utilization, clean oracle freshness,
-            and broad agent agreement rather than one noisy signal.
-          </p>
-        </article>
-      </section>
-
-      <section className="dashboard-grid subpage-dashboard-grid">
-        <div className="metric-grid">
-          <ScoreCard />
-          <article className="metric-card aurora-border">
-            <span>Borrowing capacity</span>
-            <strong>$24,000</strong>
-            <div className="score-trend">+8.4% after latest assessment</div>
-          </article>
-          <article className="metric-card aurora-border">
-            <span>Repayment likelihood</span>
-            <strong>91.2%</strong>
-            <p className="chart-note">
-              Wallet consistency and collateral quality remain the strongest
-              positive drivers.
+        <section className="dash-main">
+          <article className="dash-page-intro">
+            <h1 className="dash-page-title">Aurum Dashboard</h1>
+            <p className="dash-page-caption">
+              Track your live credit score, agent pipeline health, current loan matches, and recent
+              risk activity in one unified operating view.
             </p>
           </article>
-          <article className="metric-card aurora-border">
-            <span>Oracle freshness</span>
-            <strong>12 seconds</strong>
-            <p className="chart-note">
-              Market and collateral feeds are within the target freshness window.
-            </p>
-          </article>
-        </div>
 
-        <AgentStatus />
-      </section>
-
-      <section className="detail-grid subpage-detail-grid">
-        <ScoreHistory history={scoreHistory} />
-
-        <article className="data-card aurora-border">
-          <div>
-            <h2>{scoreSnapshot.tier} profile</h2>
-            <p className="chart-note">
-              This wallet is showing healthy activity cadence, a stable collateral
-              mix, and low oracle stress against current exposure.
-            </p>
+          <div className="dash-stat-row">
+            {STATS.map((stat) => (
+              <article key={stat.label} className="dash-stat-card aurora-border">
+                <div className="dash-stat-label">{stat.label}</div>
+                <div className={`dash-stat-value${stat.tone ? ` ${stat.tone}` : ""}`}>
+                  {stat.value}
+                </div>
+                <div className={`dash-stat-delta${stat.deltaUp ? " is-up" : ""}`}>
+                  {stat.delta}
+                </div>
+              </article>
+            ))}
           </div>
-          <div className="mini-metrics">
-            <div>
-              <span>Wallet age</span>
-              <strong>29 mo</strong>
-            </div>
-            <div>
-              <span>RWA exposure</span>
-              <strong>38%</strong>
-            </div>
-            <div>
-              <span>Agent consensus</span>
-              <strong>94%</strong>
-            </div>
-            <div>
-              <span>Last monitor</span>
-              <strong>2 min</strong>
+
+          <div className="dash-content-grid">
+            <article className="dash-score-panel aurora-border">
+              <div className="dash-panel-head">
+                <span className="dash-panel-title">Live confidence</span>
+                <span className="dash-live-badge">
+                  <span className="dash-pill-dot" />
+                  Live
+                </span>
+              </div>
+
+              <div className="dash-ring-wrap">
+                <svg
+                  className="dash-ring-svg"
+                  viewBox="0 0 120 120"
+                  role="img"
+                  aria-label={`Credit score ring: ${SCORE} out of 1000`}
+                >
+                  <circle className="dash-ring-bg" cx="60" cy="60" r="54" />
+                  <circle
+                    ref={ringRef}
+                    className="dash-ring-fill"
+                    cx="60"
+                    cy="60"
+                    r="54"
+                    strokeDasharray={CIRCUMFERENCE}
+                    strokeDashoffset={CIRCUMFERENCE}
+                  />
+                </svg>
+                <div className="dash-ring-inner">
+                  <span className="dash-ring-number">{SCORE}</span>
+                  <span className="dash-ring-label">/ 1000</span>
+                </div>
+              </div>
+
+              <div className="dash-score-grid">
+                {SCORE_GRID.map((cell) => (
+                  <div key={cell.label} className="dash-score-grid-cell">
+                    <div className="dash-score-grid-label">{cell.label}</div>
+                    <div className={`dash-score-grid-value${cell.tone ? ` ${cell.tone}` : ""}`}>
+                      {cell.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="dash-dimensions">
+                <div className="dash-dimensions-head">Score drivers</div>
+                {DIMENSIONS.map((dimension) => (
+                  <div key={dimension.name} className="dash-dimension-row">
+                    <div className="dash-dimension-header">
+                      <span className="dash-dimension-name">{dimension.name}</span>
+                      <span className="dash-dimension-score">{dimension.score}</span>
+                    </div>
+                    <div className="dash-dimension-track">
+                      <div
+                        className={`dash-dimension-fill${dimension.tone === "green" ? " is-green" : ""}`}
+                        style={{ width: barsAnimated ? `${dimension.score}%` : "0%" }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </article>
+
+            <div className="dash-right-col">
+              <article className="dash-agents-panel aurora-border">
+                <div className="dash-panel-head">
+                  <span className="dash-panel-title">Agent pipeline</span>
+                  <span className="dash-live-badge">
+                    <span className="dash-pill-dot" />
+                    5 running
+                  </span>
+                </div>
+
+                <div className="dash-agents-grid">
+                  {AGENTS.map((agent) => (
+                    <div key={agent.name} className="dash-agent-card">
+                      <div className="dash-agent-card-top">
+                        <span className="dash-agent-name">{agent.name}</span>
+                        <span className={`dash-agent-badge ${agent.status}`}>
+                          {agent.status}
+                        </span>
+                      </div>
+                      <div className="dash-agent-meta">{agent.meta}</div>
+                      <div className="dash-agent-bar">
+                        <div
+                          className={`dash-agent-bar-fill${agent.status === "standby" ? " is-gold" : ""}`}
+                          style={{ width: `${agent.pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </article>
+
+              <div className="dash-bottom-row">
+                <article className="dash-loan-panel aurora-border">
+                  <div className="dash-panel-head">
+                    <span className="dash-panel-title">Loan offers</span>
+                    <span className="dash-panel-hint gold">3 active</span>
+                  </div>
+
+                  <div className="dash-offer-list">
+                    {LOANS.map((loan) => (
+                      <Link
+                        key={loan.protocol}
+                        href="/loan-offers"
+                        className="dash-offer-row"
+                      >
+                        <span className="dash-offer-protocol">{loan.protocol}</span>
+                        <span className="dash-offer-amount">{loan.amount}</span>
+                        <span className={`dash-offer-tier tier-${loan.tier.toLowerCase()}`}>
+                          Tier {loan.tier}
+                        </span>
+                        <span className="dash-offer-rate">{loan.apr}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </article>
+
+                <article className="dash-activity-panel aurora-border">
+                  <div className="dash-panel-head">
+                    <span className="dash-panel-title">Recent activity</span>
+                    <span className="dash-panel-hint">Last 24h</span>
+                  </div>
+
+                  <div className="dash-activity-list">
+                    {ACTIVITY.map((item) => (
+                      <div key={item.title} className="dash-activity-item">
+                        <div className={`dash-activity-icon ${item.tone}`} />
+                        <div className="dash-activity-desc">
+                          <div className="dash-activity-title">{item.title}</div>
+                          <div className="dash-activity-time">{item.time}</div>
+                        </div>
+                        <span className={`dash-activity-value ${item.tone}`}>{item.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              </div>
             </div>
           </div>
-        </article>
-      </section>
-
-      <Footer />
+        </section>
+      </div>
     </main>
   );
 }

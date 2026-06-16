@@ -19,7 +19,7 @@ function getSnapshot(): ThemeMode {
   return theme === "dark" ? "dark" : "light";
 }
 
-export function ThemeToggle() {
+export function ThemeToggle({ inline = false }: { inline?: boolean }) {
   const theme = useSyncExternalStore(subscribe, getSnapshot, () => "light") as ThemeMode;
   const [overlayTheme, setOverlayTheme] = useState<ThemeMode | null>(null);
   const [overlayDirection, setOverlayDirection] = useState<"reveal-up" | "reveal-down">(
@@ -36,9 +36,7 @@ export function ThemeToggle() {
 
   const toggleTheme = () => {
     const nextTheme: ThemeMode = theme === "light" ? "dark" : "light";
-    const prefersReducedMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     if (prefersReducedMotion) {
       document.documentElement.dataset.theme = nextTheme;
@@ -82,7 +80,7 @@ export function ThemeToggle() {
 
       <button
         type="button"
-        className="theme-toggle"
+        className={`theme-toggle${inline ? " theme-toggle--inline" : ""}`}
         onClick={toggleTheme}
         aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
         title={theme === "light" ? "Dark mode" : "Light mode"}

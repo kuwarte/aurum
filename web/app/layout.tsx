@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Manrope, Space_Grotesk } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
-import { Navbar } from "@/components/navbar";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { AppShell } from "@/components/app-shell";
 
 const headingFont = Space_Grotesk({
   variable: "--font-heading",
@@ -40,14 +40,11 @@ export default function RootLayout({
       className={`${headingFont.variable} ${bodyFont.variable}`}
     >
       <body>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <Script id="aurum-theme-init" strategy="beforeInteractive">
+          {themeScript}
+        </Script>
         <div className="site-bg" />
-        <div className="shell">
-          <Navbar />
-
-          {children}
-        </div>
-        <ThemeToggle />
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );
