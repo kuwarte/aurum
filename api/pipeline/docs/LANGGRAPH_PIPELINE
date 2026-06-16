@@ -1,0 +1,333 @@
+================================================================================
+AURUM PROTOCOL - LANGGRAPH PIPELINE DOCUMENTATION
+================================================================================
+
+WHAT IS LANGGRAPH?
+------------------
+LangGraph is a framework for building stateful, multi-agent applications with
+LLMs. It provides a graph-based orchestration system where nodes represent
+agents and edges define execution flow.
+
+
+================================================================================
+HOW AURUM USES LANGGRAPH
+================================================================================
+
+PIPELINE STRUCTURE
+------------------
+Aurum implements a linear 6-node graph representing the credit assessment flow:
+
+  [Credit] --> [Risk] --> [Fraud] --> [Attestation] --> [Monitoring] --> [Lending] --> END
+
+Each node is an agent function that:
+1. Receives the complete PipelineState (TypedDict)
+2. Performs its specific task (scoring, fraud detection, etc)
+3. Returns updated state with new fields added
+4. State flows to next agent automatically
+
+
+STATE MANAGEMENT
+----------------
+LangGraph manages a single shared state object (PipelineState) that accumulates
+outputs as it flows through the pipeline.
+
+Initial State:
+{
+  "wallet_address": "0x123abc..."
+}
+
+After Credit Agent:
+{
+  "wallet_address": "0x123abc...",
+  "credit_score": 750,
+  "sub_scores": {...},
+  "shap_breakdown": {...},
+  "raw_wallet_data": {...}
+}
+
+After Risk Agent:
+{
+  ...previous fields...,
+  "risk_tier": "A",
+  "default_prob_30d": 0.05,
+  "default_prob_60d": 0.075,
+  "default_prob_90d": 0.10,
+  "early_warning_flags": [],
+  "risk_analysis": "..."
+}
+
+And so on through all 6 agents. Final state contains all 25+ fields.
+
+
+GRAPH DEFINITION
+----------------
+File: pipeline/graph.py
+
+def build_pipeline():
+    graph = StateGraph(PipelineState)
+    
+    # Add agent nodes
+    graph.add_node("credit", credit_agent)
+    graph.add_node("risk", risk_agent)
+    graph.add_node("fraud", fraud_agent)
+    graph.add_node("attestation", attestation_agent)
+    graph.add_node("monitoring", monitoring_agent)
+    graph.add_node("lending", lending_agent)
+    
+    # Define execution flow
+    graph.set_entry_point("credit")
+    graph.add_edge("credit", "risk")
+    graph.add_edge("risk", "fraud")
+    graph.add_edge("fraud", "attestation")
+    graph.add_edge("attestation", "monitoring")
+    graph.add_edge("monitoring", "lending")
+    graph.add_edge("lending", END)
+    
+    return graph.compile()
+
+This creates a compiled graph that can be invoked with initial state.
+
+
+STATE SCHEMA
+------------
+File: pipeline/state.py
+
+class PipelineState(TypedDict):
+    wallet_address: str
+    
+    # Credit Agent outputs (4 fields)
+    raw_wallet_data: dict
+    sub_scores: dict
+    credit_score: int
+    shap_breakdown: dict
+    
+    # Risk Agent outputs (6 fields)
+    risk_tier: str
+    default_prob_30d: float
+    default_prob_60d: float
+    default_prob_90d: float
+    early_warning_flags: list
+    risk_analysis: str
+    
+    # Fraud Agent outputs (4 fields)
+    fraud_score: float
+    fraud_flags: list
+    fraud_reasoning: str
+    fraud_confidence: float
+    
+    # Attestation Agent outputs (3 fields)
+    attestation_hash: str
+    tx_hash: str
+    attestation_summary: str
+    
+    # Monitoring Agent outputs (3 fields)
+    credential_active: bool
+    monitoring_reasoning: str
+    monitoring_action: str
+    
+    # Lending Agent outputs (2 fields)
+    loan_offers: list
+    lending_recommendation: str
+
+Total: 25 fields accumulated across 6 agents
+
+
+EXECUTION FLOW
+--------------
+1. API receives POST /assess with wallet_address
+2. Router calls: pipeline.invoke({"wallet_address": "0x..."})
+3. LangGraph executes nodes in order:
+   a. Credit Agent runs, adds 4 fields to state
+   b. Risk Agent receives updated state, adds 6 fields
+   c. Fraud Agent receives updated state, adds 4 fields
+   d. Attestation Agent receives updated state, adds 3 fields
+   e. Monitoring Agent receives updated state, adds 3 fields
+   f. Lending Agent receives updated state, adds 2 fields
+4. Pipeline returns final state with all 25 fields
+5. Router returns selected fields to client
+
+
+AGENT FUNCTION SIGNATURE
+-------------------------
+Every agent follows this pattern:
+
+def agent_name(state: PipelineState) -> PipelineState:
+    # Read needed fields from state
+    wallet_address = state["wallet_address"]
+    credit_score = state.get("credit_score", 0)
+    
+    # Do work (LLM calls, calculations, etc)
+    result = do_analysis(wallet_address, credit_score)
+    
+    # Return state with new fields added
+    return {
+        **state,
+        "new_field_1": result.field1,
+        "new_field_2": result.field2,
+    }
+
+The **state spread operator preserves all existing fields.
+
+
+ERROR HANDLING
+--------------
+LangGraph does NOT automatically handle errors. Each agent must implement
+its own error handling:
+
+def fraud_agent(state: PipelineState) -> PipelineState:
+    try:
+        # Try LLM analysis
+        result = llm_analysis(state)
+        return {...state, **result}
+    except Exception as e:
+        # Fallback to rules
+        print(f"LLM failed: {e}")
+        return {...state, **fallback_result}
+
+This prevents pipeline crashes from LLM failures.
+
+
+WHY LANGGRAPH FOR AURUM?
+-------------------------
+1. STATEFUL FLOW: Accumulates outputs across agents naturally
+2. TYPE SAFETY: TypedDict enforces schema at dev time
+3. OBSERVABILITY: Each node execution is trackable
+4. EXTENSIBILITY: Easy to add new agents or branches
+5. STANDARD: Industry-standard framework for agent orchestration
+
+
+ADVANTAGES OVER MANUAL ORCHESTRATION
+-------------------------------------
+Without LangGraph:
+  state = {"wallet_address": addr}
+  state.update(credit_agent(state))
+  state.update(risk_agent(state))
+  state.update(fraud_agent(state))
+  state.update(attestation_agent(state))
+  state.update(monitoring_agent(state))
+  state.update(lending_agent(state))
+  return state
+
+Issues:
+- No built-in error recovery
+- No execution tracking
+- Manual state threading
+- Harder to visualize flow
+- No conditional branching support
+
+With LangGraph:
+  result = pipeline.invoke({"wallet_address": addr})
+  return result
+
+Benefits:
+- Automatic state threading
+- Built-in execution logging
+- Easy to visualize graph
+- Simple to add conditional logic later
+- Standard framework developers understand
+
+
+FUTURE ENHANCEMENTS
+-------------------
+LangGraph supports features Aurum may use later:
+
+CONDITIONAL BRANCHING:
+  if fraud_score > 0.5:
+      route to "fraud_review_agent"
+  else:
+      route to "attestation_agent"
+
+PARALLEL EXECUTION:
+  Run fraud_agent and risk_agent in parallel, join at attestation
+
+HUMAN-IN-THE-LOOP:
+  Pause pipeline and wait for manual approval before attestation
+
+RETRY LOGIC:
+  Automatically retry failed LLM calls with backoff
+
+STREAMING:
+  Stream partial results as each agent completes
+
+
+TESTING
+-------
+LangGraph pipelines are easy to test:
+
+from pipeline.graph import pipeline
+
+def test_pipeline():
+    result = pipeline.invoke({"wallet_address": "0xtest"})
+    
+    assert "credit_score" in result
+    assert 0 <= result["credit_score"] <= 1000
+    assert result["risk_tier"] in ["A", "B", "C", "D"]
+    assert "fraud_score" in result
+    assert "loan_offers" in result
+
+Each agent can also be tested independently:
+
+from agents.credit_agent import credit_agent
+
+def test_credit_agent():
+    state = {"wallet_address": "0xtest"}
+    result = credit_agent(state)
+    
+    assert "credit_score" in result
+    assert "sub_scores" in result
+
+
+DEBUGGING
+---------
+Enable LangGraph debug logging:
+
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+result = pipeline.invoke({"wallet_address": "0x123"})
+
+Output shows:
+- Which agent is executing
+- State before/after each agent
+- Execution time per agent
+- Any errors or warnings
+
+
+PERFORMANCE
+-----------
+Current pipeline performance:
+- Credit Agent: ~100ms (XGBoost)
+- Risk Agent: ~2s (LLM + XGBoost)
+- Fraud Agent: ~2s (LLM)
+- Attestation Agent: ~1.5s (LLM)
+- Monitoring Agent: ~2s (LLM)
+- Lending Agent: ~1.5s (LLM)
+
+Total: ~9 seconds per assessment
+
+Optimization opportunities:
+- Parallel LLM calls (Risk + Fraud simultaneously)
+- Cache LLM responses for common patterns
+- Use faster model (Llama 3.1 8B instead of 70B)
+- Batch multiple assessments
+
+
+LANGGRAPH VS OTHER FRAMEWORKS
+------------------------------
+LangChain: Sequential chains, less flexible than graphs
+CrewAI: Higher level, less control over state flow
+AutoGen: Conversational agents, not task-oriented
+Semantic Kernel: Microsoft framework, similar to LangGraph
+LangGraph: Best for stateful multi-agent DAGs
+
+
+CONCLUSION
+----------
+LangGraph provides a clean, extensible architecture for Aurum's credit
+assessment pipeline. The linear flow is simple but the framework supports
+complex agent orchestration patterns as the system evolves.
+
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================

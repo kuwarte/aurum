@@ -1,3 +1,10 @@
+"""
+LangGraph Pipeline: Agent Orchestration.
+
+Defines the execution graph for Aurum's 6-agent credit assessment pipeline.
+Each agent processes the shared state sequentially in a linear flow.
+"""
+
 from langgraph.graph import StateGraph, END
 from pipeline.state import PipelineState
 from agents.credit_agent import credit_agent
@@ -7,7 +14,16 @@ from agents.attestation_agent import attestation_agent
 from agents.monitoring_agent import monitoring_agent
 from agents.lending_agent import lending_agent
 
+
 def build_pipeline():
+    """
+    Build LangGraph execution pipeline for credit assessment.
+    
+    Flow: Credit -> Risk -> Fraud -> Attestation -> Monitoring -> Lending
+    
+    Each agent receives the complete state dict and returns an updated state.
+    State accumulates all outputs as it flows through the pipeline.
+    """
     graph = StateGraph(PipelineState)
 
     graph.add_node("credit",      credit_agent)
@@ -26,5 +42,6 @@ def build_pipeline():
     graph.add_edge("lending",     END)
 
     return graph.compile()
+
 
 pipeline = build_pipeline()
