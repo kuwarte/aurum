@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Individual Agent Testing Suite.
+AGENT UNIT TESTING SCRIPT
 
 Provides granular testing of each agent in the LangGraph pipeline.
 Tests agents in isolation and in sequence with state cascading.
@@ -19,8 +19,10 @@ import json
 from dotenv import load_dotenv
 from pipeline.state import PipelineState
 
+
 # Load environment configuration before importing agents
 load_dotenv()
+
 
 # Sample initial state for testing
 INITIAL_STATE: PipelineState = {
@@ -48,15 +50,16 @@ def test_credit_agent():
     Test Credit Agent in isolation.
 
     Verifies that the Credit Agent correctly:
-      1. Accepts initial pipeline state
-      2. Generates or fetches wallet data
-      3. Runs XGBoost model
-      4. Computes SHAP feature breakdown
-      5. Returns valid credit score (0-1000) and sub-scores
+        1. Accepts initial pipeline state
+        2. Generates or fetches wallet data
+        3. Runs XGBoost model
+        4. Computes SHAP feature breakdown
+        5. Returns valid credit score (0-1000) and sub-scores
 
     Returns:
         Updated pipeline state for cascade testing
     """
+
     print("\n" + "="*80)
     print("TEST: Credit Agent")
     print("="*80)
@@ -66,17 +69,17 @@ def test_credit_agent():
     state = INITIAL_STATE.copy()
     result = credit_agent(state)
     
-    print(f"✓ Wallet Address: {result['wallet_address']}")
-    print(f"✓ Credit Score: {result['credit_score']} (0-1000)")
-    print(f"✓ Sub-Scores: {json.dumps(result['sub_scores'], indent=2)}")
-    print(f"✓ SHAP Breakdown Keys: {list(result['shap_breakdown'].keys())}")
+    print(f"[/] Wallet Address: {result['wallet_address']}")
+    print(f"[/] Credit Score: {result['credit_score']} (0-1000)")
+    print(f"[/] Sub-Scores: {json.dumps(result['sub_scores'], indent=2)}")
+    print(f"[/] SHAP Breakdown Keys: {list(result['shap_breakdown'].keys())}")
     
     # Verify output
     assert 0 <= result['credit_score'] <= 1000, "Score out of range"
     assert len(result['sub_scores']) == 6, "Should have 6 sub-scores"
     assert len(result['shap_breakdown']) > 0, "Should have SHAP values"
     
-    print("✓ PASSED")
+    print("[/] PASSED")
     return result
 
 
@@ -85,15 +88,16 @@ def test_risk_agent():
     Test Risk Agent in isolation.
 
     Verifies that the Risk Agent correctly:
-      1. Consumes credit score from credit agent
-      2. Calculates default probabilities (30/60/90 day)
-      3. Assigns risk tier based on score thresholds
-      4. Detects early warning flags (low repayment, high risk, etc.)
-      5. Returns valid probabilities (monotonically increasing)
+        1. Consumes credit score from credit agent
+        2. Calculates default probabilities (30/60/90 day)
+        3. Assigns risk tier based on score thresholds
+        4. Detects early warning flags (low repayment, high risk, etc.)
+        5. Returns valid probabilities (monotonically increasing)
 
     Returns:
         Updated pipeline state for cascade testing
     """
+    
     print("\n" + "="*80)
     print("TEST: Risk Agent")
     print("="*80)
@@ -105,11 +109,11 @@ def test_risk_agent():
     
     result = risk_agent(state)
     
-    print(f"✓ Risk Tier: {result['risk_tier']} (A/B/C/D)")
-    print(f"✓ Default Prob 30d: {result['default_prob_30d']:.3f}")
-    print(f"✓ Default Prob 60d: {result['default_prob_60d']:.3f}")
-    print(f"✓ Default Prob 90d: {result['default_prob_90d']:.3f}")
-    print(f"✓ Early Warning Flags: {result['early_warning_flags']}")
+    print(f"[/] Risk Tier: {result['risk_tier']} (A/B/C/D)")
+    print(f"[/] Default Prob 30d: {result['default_prob_30d']:.3f}")
+    print(f"[/] Default Prob 60d: {result['default_prob_60d']:.3f}")
+    print(f"[/] Default Prob 90d: {result['default_prob_90d']:.3f}")
+    print(f"[/] Early Warning Flags: {result['early_warning_flags']}")
     
     # Verify output
     assert result['risk_tier'] in ['A', 'B', 'C', 'D'], "Invalid tier"
@@ -117,7 +121,7 @@ def test_risk_agent():
     assert result['default_prob_30d'] <= result['default_prob_60d'], "Probs not monotonic"
     assert result['default_prob_60d'] <= result['default_prob_90d'], "Probs not monotonic"
     
-    print("✓ PASSED")
+    print("[/] PASSED")
     return result
 
 
@@ -126,14 +130,15 @@ def test_fraud_agent():
     Test Fraud Agent in isolation.
 
     Verifies that the Fraud Agent correctly:
-      1. Analyzes wallet characteristics for fraud patterns
-      2. Assigns fraud score (0-1)
-      3. Generates specific fraud flags when patterns detected
-      4. Returns valid scores and flag lists
+        1. Analyzes wallet characteristics for fraud patterns
+        2. Assigns fraud score (0-1)
+        3. Generates specific fraud flags when patterns detected
+        4. Returns valid scores and flag lists
 
     Returns:
         Updated pipeline state for cascade testing
     """
+    
     print("\n" + "="*80)
     print("TEST: Fraud Agent")
     print("="*80)
@@ -145,14 +150,14 @@ def test_fraud_agent():
     
     result = fraud_agent(state)
     
-    print(f"✓ Fraud Score: {result['fraud_score']:.3f} (0-1)")
-    print(f"✓ Fraud Flags: {result['fraud_flags']}")
+    print(f"[/] Fraud Score: {result['fraud_score']:.3f} (0-1)")
+    print(f"[/] Fraud Flags: {result['fraud_flags']}")
     
     # Verify output
     assert 0 <= result['fraud_score'] <= 1, "Fraud score out of range"
     assert isinstance(result['fraud_flags'], list), "Fraud flags should be list"
     
-    print("✓ PASSED")
+    print("[/] PASSED")
     return result
 
 
@@ -161,10 +166,10 @@ def test_attestation_agent():
     Test Attestation Agent in isolation.
 
     Verifies that the Attestation Agent correctly:
-      1. Aggregates all upstream agent outputs
-      2. Saves payload to Supabase (with error handling)
-      3. Generates attestation hash for on-chain reference
-      4. Returns valid hashes and transaction placeholders
+        1. Aggregates all upstream agent outputs
+        2. Saves payload to Supabase (with error handling)
+        3. Generates attestation hash for on-chain reference
+        4. Returns valid hashes and transaction placeholders
 
     Returns:
         Updated pipeline state for cascade testing
@@ -172,6 +177,7 @@ def test_attestation_agent():
     Note:
         On-chain transaction calls are stubbed pending Dev 2's contract deployment.
     """
+
     print("\n" + "="*80)
     print("TEST: Attestation Agent")
     print("="*80)
@@ -183,14 +189,14 @@ def test_attestation_agent():
     
     result = attestation_agent(state)
     
-    print(f"✓ Attestation Hash: {result['attestation_hash'][:80]}...")
-    print(f"✓ TX Hash: {result['tx_hash']}")
+    print(f"[/] Attestation Hash: {result['attestation_hash'][:80]}...")
+    print(f"[/] TX Hash: {result['tx_hash']}")
     
     # Verify output
     assert len(result['attestation_hash']) > 0, "Should have attestation hash"
     assert len(result['tx_hash']) > 0, "Should have tx hash"
     
-    print("✓ PASSED (Saved to Supabase)")
+    print("[/] PASSED (Saved to Supabase)")
     return result
 
 
@@ -210,6 +216,7 @@ def test_monitoring_agent():
     Note:
         Revocation logic is stubbed pending Dev 2's contract methods.
     """
+
     print("\n" + "="*80)
     print("TEST: Monitoring Agent")
     print("="*80)
@@ -221,12 +228,12 @@ def test_monitoring_agent():
     
     result = monitoring_agent(state)
     
-    print(f"✓ Credential Active: {result['credential_active']}")
+    print(f"[/] Credential Active: {result['credential_active']}")
     
     # Verify output
     assert isinstance(result['credential_active'], bool), "Should be boolean"
     
-    print("✓ PASSED")
+    print("[/] PASSED")
     return result
 
 
@@ -235,10 +242,10 @@ def test_lending_agent():
     Test Lending Agent in isolation.
 
     Verifies that the Lending Agent correctly:
-      1. Consumes risk tier from upstream agents
-      2. Matches tier to lending pool offers
-      3. Returns list of available loan offers
-      4. Handles all tier categories (A/B/C/D)
+        1. Consumes risk tier from upstream agents
+        2. Matches tier to lending pool offers
+        3. Returns list of available loan offers
+        4. Handles all tier categories (A/B/C/D)
 
     Returns:
         Updated pipeline state for cascade testing
@@ -246,6 +253,7 @@ def test_lending_agent():
     Note:
         Pool data is mocked; Phase 3 integrates real protocol APIs.
     """
+    
     print("\n" + "="*80)
     print("TEST: Lending Agent")
     print("="*80)
@@ -257,12 +265,12 @@ def test_lending_agent():
     
     result = lending_agent(state)
     
-    print(f"✓ Loan Offers: {json.dumps(result['loan_offers'], indent=2)}")
+    print(f"[/] Loan Offers: {json.dumps(result['loan_offers'], indent=2)}")
     
     # Verify output
     assert isinstance(result['loan_offers'], list), "Loan offers should be list"
     
-    print("✓ PASSED")
+    print("[/] PASSED")
     return result
 
 
@@ -271,16 +279,17 @@ def run_all_agents():
     Execute all agents in sequence with state cascading.
 
     Tests the full LangGraph pipeline by running agents in order:
-      1. Credit Agent → generates score
-      2. Risk Agent → classifies risk
-      3. Fraud Agent → detects fraud
-      4. Attestation Agent → saves to Supabase
-      5. Monitoring Agent → checks status
-      6. Lending Agent → matches offers
+        1. Credit Agent -> generates score
+        2. Risk Agent -> classifies risk
+        3. Fraud Agent -> detects fraud
+        4. Attestation Agent -> saves to Supabase
+        5. Monitoring Agent -> checks status
+        6. Lending Agent -> matches offers
 
     Returns:
         True if all agents passed, False otherwise
     """
+    
     print("\n\n")
     print("#"*80)
     print("# FULL AGENT PIPELINE TEST")
@@ -291,7 +300,7 @@ def run_all_agents():
         
         print("\n\n")
         print("#"*80)
-        print("# ✓ ALL AGENTS PASSED")
+        print("# [/] ALL AGENTS PASSED")
         print("#"*80)
         print("\nNext steps:")
         print("  1. Check Supabase for saved assessment")
@@ -317,6 +326,7 @@ def run_single_agent(agent_name: str):
     Returns:
         True if agent test passed, False otherwise
     """
+
     agents = {
         "credit": test_credit_agent,
         "risk": test_risk_agent,
