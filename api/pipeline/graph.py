@@ -1,5 +1,5 @@
 """
-LangGraph Pipeline: Agent Orchestration.
+LANGGRAPH PIPELINE: AGENT ORCHESTRATION
 
 Defines the execution graph for Aurum's 6-agent credit assessment pipeline.
 Each agent processes the shared state sequentially in a linear flow.

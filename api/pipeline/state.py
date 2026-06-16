@@ -1,5 +1,5 @@
 """
-Pipeline State: Shared State Schema.
+PIPELINE STATE: SHARED STATE SCHEMA
 
 Defines the TypedDict structure that flows through all agents.
 Each agent reads from and writes to this shared state object.
