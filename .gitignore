@@ -1,2 +1,4 @@
 .agents/
 AGENTS.md
+.env
+.env.local
