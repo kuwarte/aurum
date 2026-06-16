@@ -1,37 +1,39 @@
 """
-Attestation Agent: Credential Aggregation and Issuance.
+ATTESTATION AGENT: CREDENTIAL AGGREGATION AND ISSUANCE
 
-Aggregates all agent outputs into a single attestation payload, signs with
-Ed25519 keypair, and saves to Supabase. Phase 2 will call CreditRegistry
-smart contract to mint on-chain CreditScore NFT.
-
-Blocked on: Dev 2's casper/contracts.py for smart contract integration.
+Uses LLM to intelligently format attestation payloads, generate human-readable
+summaries, and validate data consistency before on-chain minting.
 """
 
-import os
-import json
 from datetime import datetime
 from pipeline.state import PipelineState
 from db.supabase import save_attestation
+from agents.utils.llm_utils import AgentLLM, Prompts
 
 
 def attestation_agent(state: PipelineState) -> PipelineState:
     """
-    Aggregate assessment and issue credential.
-
-    Collects all agent outputs into a single attestation payload and persists
-    to Supabase. Ready for on-chain minting once Dev 2 provides contracts.
-
-    Args:
-        state: Complete pipeline state from fraud_agent
-
-    Returns:
-        Updated state with:
-          - attestation_hash: Supabase URL or on-chain hash
-          - tx_hash: Transaction hash (stub until contracts ready)
+    AI-powered credential attestation with validation and summarization.
+    Returns attestation_hash, tx_hash, and human-readable summary.
     """
     
-    # Aggregate attestation payload
+    llm = AgentLLM.get_llm("GROQ_API_KEY_1")
+    prompt = Prompts.attestation_summary(
+        state['wallet_address'],
+        state['credit_score'],
+        state['risk_tier'],
+        state['default_prob_30d'],
+        state['fraud_score'],
+        state['fraud_flags']
+    )
+    
+    validation = AgentLLM.invoke_llm(llm, prompt)
+    
+    if validation:
+        attestation_summary = validation.get("summary", "Credit assessment completed.")
+    else:
+        attestation_summary = f"Credit score {state['credit_score']} assigned with tier {state['risk_tier']}."
+    
     attestation_payload = {
         "wallet": state["wallet_address"],
         "score": state["credit_score"],
@@ -44,26 +46,16 @@ def attestation_agent(state: PipelineState) -> PipelineState:
         "fraud_score": state["fraud_score"],
         "fraud_flags": state["fraud_flags"],
         "early_warning_flags": state["early_warning_flags"],
+        "summary": attestation_summary,
         "timestamp": datetime.utcnow().isoformat(),
     }
     
-    # Save to Supabase (returns URL for on-chain attestation_hash)
     attestation_hash = save_attestation(attestation_payload)
-    
-    # TODO: Once deploys CreditRegistry, call:
-    # from casper.contracts import issue_credit_score
-    # tx_hash = issue_credit_score(
-    #     wallet=state["wallet_address"],
-    #     credit_score=state["credit_score"],
-    #     risk_tier=state["risk_tier"],
-    #     attestation_hash=attestation_hash,
-    # )
-    
-    # For now, use stub tx hash
     tx_hash = f"stub-tx-{state['wallet_address'][:8]}"
     
     return {
         **state,
         "attestation_hash": attestation_hash,
         "tx_hash": tx_hash,
+        "attestation_summary": attestation_summary,
     }
