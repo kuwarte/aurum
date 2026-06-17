@@ -2,3 +2,6 @@
 AGENTS.md
 .env
 .env.local
+keys/
+target/
+*.pem
