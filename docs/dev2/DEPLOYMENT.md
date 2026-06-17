@@ -4,16 +4,23 @@ This runbook is testnet-only. It covers the Windows/WSL setup, local validation,
 
 ## Current Contract Status
 
-The current `contracts/` workspace contains Rust domain/state-machine crates:
+The `contracts/` workspace now contains two layers:
 
-- `credit_registry`
-- `compliance_registry`
-- `oracle_paywall`
-- `reputation_registry`
+- existing Rust domain/state-machine crates under `credit_registry`, `compliance_registry`, `oracle_paywall`, and `reputation_registry`
+- deployable Odra MVP wrappers under `contracts/odra`
 
-They are not deployable Odra contracts yet. There is no `Odra.toml`, no Odra dependency, and no `wasm32-unknown-unknown` contract artifact. `scripts/deploy-contracts.sh` now supports real Casper testnet deployment with `casper-client put-deploy` once deployable Wasm artifacts exist, but it intentionally fails before broadcasting if those artifacts are missing.
+The Odra wrappers preserve the core MVP behavior: role assignment, credit issuance/update/revocation, compliance flagging, oracle paid-query nonce protection, and reputation attestation/slashing. They intentionally use Casper/Odra-supported primitive entrypoint types. For example, credit score values are `u32` in the Odra entrypoints even though the pure Rust domain crate uses `u16`.
 
-Exact next technical step: pin the Odra toolchain, wrap the current Rust logic with Odra modules/storage/events/entrypoints, build release Wasm artifacts, then rerun the deploy script.
+Pinned toolchain:
+
+- `odra = 2.8.1`
+- `odra-build = 2.8.1`
+- `odra-vm = 2.8.1`
+- `cargo-odra = 0.1.7`
+- `wasm32-unknown-unknown` Rust target
+- `casper-client` installed in WSL
+
+Odra 2.8.1 currently requires a nightly-capable compiler path because `odra-macros` uses a nightly feature. In local verification this was handled with `RUSTC_BOOTSTRAP=1`. In WSL, prefer a pinned nightly toolchain or export `RUSTC_BOOTSTRAP=1` for the Odra build/test commands.
 
 ## Windows And WSL Setup
 
@@ -27,16 +34,20 @@ After restart, open Ubuntu/WSL:
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential pkg-config libssl-dev curl git python3 python3-pip
+sudo apt install -y build-essential pkg-config libssl-dev curl git python3 python3-pip binaryen wabt
 
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
+rustup target add wasm32-unknown-unknown
 
 cargo --version
 rustc --version
 
 cargo install casper-client
 casper-client --version
+
+cargo install cargo-odra --locked
+cargo odra --help
 ```
 
 Locate the Windows repo from WSL using `/mnt/<drive>/...`:
@@ -48,6 +59,8 @@ git checkout feature/contracts-data-layer
 
 ## Generate Deployer Keys
 
+Only run this when creating a new testnet deployer. If a trusted teammate sends the existing hackathon testnet deployer key, use the shared-key workflow below instead and do not overwrite it.
+
 Generate a testnet deployer keypair inside the repo:
 
 ```bash
@@ -57,6 +70,56 @@ cat keys/deployer/public_key_hex
 ```
 
 Do not print, copy into chat, or commit `keys/deployer/secret_key.pem`.
+
+## Team Deployment Workflows
+
+Workflow A is preferred: one Dev 2 operator deploys, then shares only public deployment outputs. Teammates receive:
+
+```env
+CREDIT_REGISTRY_DEPLOY_HASH=
+COMPLIANCE_REGISTRY_DEPLOY_HASH=
+ORACLE_PAYWALL_DEPLOY_HASH=
+REPUTATION_REGISTRY_DEPLOY_HASH=
+CREDIT_REGISTRY_HASH=
+COMPLIANCE_REGISTRY_HASH=
+ORACLE_PAYWALL_HASH=
+REPUTATION_REGISTRY_HASH=
+```
+
+They do not need the deployer private key for normal Dev 1 or Dev 3 integration.
+
+Workflow B is allowed only for trusted hackathon testnet testing: trusted teammates use the same funded Casper testnet deployer keypair. This must never be used for mainnet or production funds. Coordinate before running `./scripts/deploy-contracts.sh`; shared deployer access can create duplicate valid contract deployments if more than one person submits the same artifacts.
+
+## Trusted Teammate Shared Key Setup
+
+If you receive the shared testnet deployer package, place it locally without printing file contents:
+
+```txt
+keys/deployer/public_key.pem
+keys/deployer/public_key_hex
+keys/deployer/secret_key.pem
+```
+
+Use the matching received `.env` locally and confirm it points at the file path, not inline secret contents:
+
+```env
+CASPER_PRIVATE_KEY_PATH=./keys/deployer/secret_key.pem
+CASPER_PRIVATE_KEY=
+```
+
+Before deployment, verify the local files are excluded from Git on your machine:
+
+```bash
+git status --short -- .env keys
+```
+
+If your local exclude file does not already ignore them, add local-only excludes yourself:
+
+```bash
+printf '\n.env\nkeys/\n*.pem\n' >> .git/info/exclude
+```
+
+Do not commit `.env`, `keys/`, `*.pem`, or generated `target/` output. Do not paste `secret_key.pem` into chat, tickets, docs, or source.
 
 ## Environment
 
@@ -113,14 +176,61 @@ Do not use mainnet CSPR for this Dev 2 flow.
 ## Build And Test
 
 ```bash
+set -a
+source .env
+set +a
+
 ./scripts/check-dev2-env.sh --deploy
 
 cd contracts
-cargo build --workspace
+export RUSTC_BOOTSTRAP=1
 cargo test --workspace
+cargo odra build
 cd ..
 
 python3 -m compileall api/casper api/cspr_cloud
+```
+
+## Build Wasm Artifacts
+
+Preferred WSL build command:
+
+```bash
+cd contracts
+export RUSTC_BOOTSTRAP=1
+cargo odra build
+```
+
+Expected artifacts:
+
+```txt
+contracts/wasm/CreditRegistry.wasm
+contracts/wasm/ComplianceRegistry.wasm
+contracts/wasm/OraclePaywall.wasm
+contracts/wasm/ReputationRegistry.wasm
+```
+
+`cargo-odra` also copies workspace artifacts into module-local `wasm/` directories when running in a supported Unix-like environment. The deploy script accepts both root `contracts/wasm/` and `contracts/odra/wasm/` artifact locations.
+
+If `cargo odra build` is unavailable, each module can be built manually and copied to the root `wasm/` directory:
+
+```bash
+cd contracts
+mkdir -p wasm
+export RUSTC_BOOTSTRAP=1
+export ODRA_BACKEND=casper
+
+ODRA_MODULE=CreditRegistry cargo build -p aurum_odra_contracts --release --target wasm32-unknown-unknown --bin aurum_odra_contracts_build_contract
+cp target/wasm32-unknown-unknown/release/aurum_odra_contracts_build_contract.wasm wasm/CreditRegistry.wasm
+
+ODRA_MODULE=ComplianceRegistry cargo build -p aurum_odra_contracts --release --target wasm32-unknown-unknown --bin aurum_odra_contracts_build_contract
+cp target/wasm32-unknown-unknown/release/aurum_odra_contracts_build_contract.wasm wasm/ComplianceRegistry.wasm
+
+ODRA_MODULE=OraclePaywall cargo build -p aurum_odra_contracts --release --target wasm32-unknown-unknown --bin aurum_odra_contracts_build_contract
+cp target/wasm32-unknown-unknown/release/aurum_odra_contracts_build_contract.wasm wasm/OraclePaywall.wasm
+
+ODRA_MODULE=ReputationRegistry cargo build -p aurum_odra_contracts --release --target wasm32-unknown-unknown --bin aurum_odra_contracts_build_contract
+cp target/wasm32-unknown-unknown/release/aurum_odra_contracts_build_contract.wasm wasm/ReputationRegistry.wasm
 ```
 
 ## Deploy Contracts
@@ -130,7 +240,9 @@ Required tools:
 - WSL Ubuntu
 - Rust/Cargo
 - `casper-client`
-- pinned Odra toolchain capable of producing Casper Wasm artifacts
+- `cargo-odra`
+- `binaryen` for `wasm-opt`
+- `wabt` for `wasm-strip`
 - funded Casper testnet deployer keypair
 
 When deployable Wasm artifacts exist:
@@ -139,9 +251,19 @@ When deployable Wasm artifacts exist:
 ./scripts/deploy-contracts.sh
 ```
 
+Stop and coordinate first if another teammate already submitted deployments from the same shared deployer. In that case, use their deploy hashes and contract hashes instead of deploying another set.
+
 The script looks for each contract artifact under:
 
 ```txt
+contracts/wasm/CreditRegistry.wasm
+contracts/wasm/ComplianceRegistry.wasm
+contracts/wasm/OraclePaywall.wasm
+contracts/wasm/ReputationRegistry.wasm
+contracts/odra/wasm/CreditRegistry.wasm
+contracts/odra/wasm/ComplianceRegistry.wasm
+contracts/odra/wasm/OraclePaywall.wasm
+contracts/odra/wasm/ReputationRegistry.wasm
 contracts/target/wasm32-unknown-unknown/release/<contract>.wasm
 contracts/target/wasm32-unknown-unknown/release/<contract-with-dashes>.wasm
 contracts/<contract>/target/wasm32-unknown-unknown/release/<contract>.wasm
@@ -155,16 +277,65 @@ It broadcasts with `casper-client put-deploy` using:
 - `CASPER_PRIVATE_KEY_PATH` preferred
 - `CASPER_PRIVATE_KEY` fallback only
 - `CASPER_DEPLOY_PAYMENT_AMOUNT` optional, default `300000000000`
+- Odra install args:
+  - `odra_cfg_package_hash_key_name:string='<Contract>_package_hash'`
+  - `odra_cfg_allow_key_override:bool='true'` by default
+  - `odra_cfg_is_upgradable:bool='false'` by default
+  - `odra_cfg_is_upgrade:bool='false'`
+- Odra constructor args:
+  - `admin:string='${CASPER_ACCOUNT_HASH}'` for all contracts
+  - `treasury_account:string='${X402_TREASURY_ACCOUNT}'` for `OraclePaywall`
+  - `query_price_motes:u64='${ORACLE_PAYWALL_QUERY_PRICE_MOTES}'` for `OraclePaywall`
+  - `network:string='${CASPER_DEPLOY_CHAIN_NAME:-${CASPER_NETWORK_NAME}}'` for `OraclePaywall`
+
+Do not deploy the generated Odra Wasm with only `--session-path`. Odra 2.8.1 install Wasm expects the `odra_cfg_*` session arguments above. Missing those arguments reverts on-chain with Odra `ExecutionError::MissingArg`, surfaced by Casper as `User error: 64658`.
+
+Correct command shape for `CreditRegistry`:
+
+```bash
+casper-client put-deploy \
+  --node-address "$CASPER_RPC_URL" \
+  --chain-name "${CASPER_DEPLOY_CHAIN_NAME:-$CASPER_NETWORK_NAME}" \
+  --secret-key "$CASPER_PRIVATE_KEY_PATH" \
+  --payment-amount "${CASPER_DEPLOY_PAYMENT_AMOUNT:-300000000000}" \
+  --session-path contracts/wasm/CreditRegistry.wasm \
+  --session-arg "odra_cfg_package_hash_key_name:string='CreditRegistry_package_hash'" \
+  --session-arg "odra_cfg_allow_key_override:bool='true'" \
+  --session-arg "odra_cfg_is_upgradable:bool='false'" \
+  --session-arg "odra_cfg_is_upgrade:bool='false'" \
+  --session-arg "admin:string='${CASPER_ACCOUNT_HASH}'"
+```
+
+Correct command shape for `OraclePaywall`:
+
+```bash
+casper-client put-deploy \
+  --node-address "$CASPER_RPC_URL" \
+  --chain-name "${CASPER_DEPLOY_CHAIN_NAME:-$CASPER_NETWORK_NAME}" \
+  --secret-key "$CASPER_PRIVATE_KEY_PATH" \
+  --payment-amount "${CASPER_DEPLOY_PAYMENT_AMOUNT:-300000000000}" \
+  --session-path contracts/wasm/OraclePaywall.wasm \
+  --session-arg "odra_cfg_package_hash_key_name:string='OraclePaywall_package_hash'" \
+  --session-arg "odra_cfg_allow_key_override:bool='true'" \
+  --session-arg "odra_cfg_is_upgradable:bool='false'" \
+  --session-arg "odra_cfg_is_upgrade:bool='false'" \
+  --session-arg "admin:string='${CASPER_ACCOUNT_HASH}'" \
+  --session-arg "treasury_account:string='${X402_TREASURY_ACCOUNT}'" \
+  --session-arg "query_price_motes:u64='${ORACLE_PAYWALL_QUERY_PRICE_MOTES:-1500000000}'" \
+  --session-arg "network:string='${CASPER_DEPLOY_CHAIN_NAME:-$CASPER_NETWORK_NAME}'"
+```
+
+`ComplianceRegistry` and `ReputationRegistry` use the same shape as `CreditRegistry` with their own Wasm path and package hash key name.
 
 ## Record Deploy Hashes
 
 After each successful submission, record:
 
 ```env
-CREDIT_REGISTRY_DEPLOY_HASH=<deploy_hash>
-COMPLIANCE_REGISTRY_DEPLOY_HASH=<deploy_hash>
-ORACLE_PAYWALL_DEPLOY_HASH=<deploy_hash>
-REPUTATION_REGISTRY_DEPLOY_HASH=<deploy_hash>
+CREDIT_REGISTRY_DEPLOY_HASH=
+COMPLIANCE_REGISTRY_DEPLOY_HASH=
+ORACLE_PAYWALL_DEPLOY_HASH=
+REPUTATION_REGISTRY_DEPLOY_HASH=
 ```
 
 Capture the deploy timestamp, deployer account, network, and deploy hash.
@@ -177,15 +348,24 @@ Capture the deploy timestamp, deployer account, network, and deploy hash.
 
 Also inspect each deploy hash in Casper testnet explorer or CSPR.cloud tooling and confirm success before extracting contract hashes.
 
+Local verification before deploy:
+
+```bash
+cd contracts
+export RUSTC_BOOTSTRAP=1
+cargo test --workspace
+cargo odra build
+```
+
 ## Record Contract Hashes
 
 After deploy confirmation, inspect the successful deploy effects in explorer, CSPR.cloud tooling, or Casper client state queries. Record the resulting contract hashes:
 
 ```env
-CREDIT_REGISTRY_HASH=<contract_hash>
-COMPLIANCE_REGISTRY_HASH=<contract_hash>
-ORACLE_PAYWALL_HASH=<contract_hash>
-REPUTATION_REGISTRY_HASH=<contract_hash>
+CREDIT_REGISTRY_HASH=
+COMPLIANCE_REGISTRY_HASH=
+ORACLE_PAYWALL_HASH=
+REPUTATION_REGISTRY_HASH=
 ```
 
 These are the values Dev 1 and Dev 3 consume. Do not hardcode them in source.
@@ -210,7 +390,10 @@ Use [INTEGRATION_NOTES.md](/d:/zeank/Desktop/Projects/aurum/docs/dev2/INTEGRATIO
 - Do not commit `*.pem`.
 - Do not print `secret_key.pem`.
 - Do not use mainnet CSPR for this Dev 2 flow.
+- Do not share the testnet deployer key outside trusted hackathon teammates.
+- Coordinate before `./scripts/deploy-contracts.sh` when using a shared deployer key.
 - Testnet CSPR is required for deploy testing.
 - `target/` is build output and should not be committed.
+- `wasm/` artifacts are generated build output and should be reviewed before committing.
 - `Cargo.lock` and `Cargo.toml` are safe to commit.
 - Keep x402 and CSPR.cloud modes labeled accurately as `mock` or `live`.

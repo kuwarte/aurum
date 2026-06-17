@@ -31,6 +31,10 @@ CASPER_PRIVATE_KEY=<discouraged_key_path_or_secret_mount>
 
 Use `CASPER_PRIVATE_KEY_PATH` whenever possible. Never print `secret_key.pem` or paste private key contents into chat, docs, scripts, or source.
 
+Trusted teammate sharing is allowed only for the hackathon Casper testnet deployer. The shared package should contain local files under `keys/deployer/`, and `.env` should reference `CASPER_PRIVATE_KEY_PATH=./keys/deployer/secret_key.pem`. Do not convert the PEM contents into `CASPER_PRIVATE_KEY`.
+
+Coordinate before running `./scripts/deploy-contracts.sh` with a shared deployer key. If one teammate has already deployed, use their deploy hashes and contract hashes instead of submitting duplicate contract instances.
+
 ## Deployment Records
 
 Deploy hashes are populated after each successful testnet deploy submission:
@@ -111,14 +115,54 @@ Only use live mode when route templates and credentials are confirmed against te
 ```env
 CASPER_DEPLOY_PAYMENT_AMOUNT=300000000000
 CASPER_EXPECTED_CONTRACTS=credit_registry,compliance_registry,oracle_paywall,reputation_registry
+ORACLE_PAYWALL_QUERY_PRICE_MOTES=1500000000
+ODRA_ALLOW_KEY_OVERRIDE=true
+ODRA_IS_UPGRADABLE=false
 ```
 
 `CASPER_DEPLOY_PAYMENT_AMOUNT` is passed to `casper-client put-deploy` when Wasm artifacts exist.
+`ORACLE_PAYWALL_QUERY_PRICE_MOTES` is the `OraclePaywall.init()` price in motes. It must be an integer.
+`ODRA_ALLOW_KEY_OVERRIDE` and `ODRA_IS_UPGRADABLE` are passed as Odra `odra_cfg_*` install arguments.
+
+`User error: 64658` on an Odra install deploy means Odra `ExecutionError::MissingArg`. For these contracts, that usually means the Wasm was submitted with raw `--session-path` but without Odra install args such as `odra_cfg_package_hash_key_name`, `odra_cfg_allow_key_override`, `odra_cfg_is_upgradable`, and `odra_cfg_is_upgrade`, or without the module constructor args.
+
+## Odra Build Toolchain
+
+These are shell/toolchain settings, not application secrets:
+
+```bash
+export RUSTC_BOOTSTRAP=1
+rustup target add wasm32-unknown-unknown
+cargo install cargo-odra --locked
+```
+
+Use the setting above or a compatible pinned nightly toolchain for Odra 2.8.1 builds.
+
+Teammate verification commands:
+
+```bash
+set -a
+source .env
+set +a
+
+./scripts/check-dev2-env.sh --deploy
+
+cd contracts
+export RUSTC_BOOTSTRAP=1
+cargo test --workspace
+cargo odra build
+cd ..
+
+python3 -m compileall api/casper api/cspr_cloud
+```
 
 ## Security Notes
 
 - `.env`, `keys/`, and `*.pem` are local-only.
+- Do not print or paste `keys/deployer/secret_key.pem`.
+- Do not use the shared testnet deployer on mainnet or with production funds.
 - `target/` is build output and should not be committed.
+- `wasm/` is generated contract output; verify artifacts before sharing or committing.
 - `Cargo.toml` and `Cargo.lock` are safe to commit.
 - Mainnet CSPR is not required and must not be used for this Dev 2 flow.
 - Testnet CSPR is required for deployment testing.

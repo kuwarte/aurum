@@ -1,0 +1,38 @@
+[package]
+name = "aurum_odra_contracts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "aurum_odra_contracts_build_contract"
+path = "bin/build_contract.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "aurum_odra_contracts_build_schema"
+path = "bin/build_schema.rs"
+
+[[bin]]
+name = "contracts_build_contract"
+path = "bin/contracts_build_contract.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "contracts_build_schema"
+path = "bin/contracts_build_schema.rs"
+
+[dependencies]
+odra.workspace = true
+
+[build-dependencies]
+odra-build.workspace = true
+
+[dev-dependencies]
+odra-vm.workspace = true

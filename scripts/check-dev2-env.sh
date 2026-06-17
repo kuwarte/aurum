@@ -65,6 +65,7 @@ check_optional() {
 FAILURES=0
 
 log "Checking Dev 2 environment in ${MODE} mode"
+log "This checker validates the Casper testnet Dev 2 flow only"
 
 for name in CASPER_RPC_URL CASPER_NETWORK_NAME CASPER_DEPLOY_CHAIN_NAME; do
   check_required "${name}" || FAILURES=1
@@ -87,7 +88,7 @@ if [[ "${MODE}" == "deploy" ]]; then
 
   if [[ -n "${CASPER_PRIVATE_KEY_PATH:-}" ]]; then
     if [[ -f "${CASPER_PRIVATE_KEY_PATH}" ]]; then
-      log "Preferred CASPER_PRIVATE_KEY_PATH points to an existing key file: $(mask_value "${CASPER_PRIVATE_KEY_PATH}")"
+      log "Preferred CASPER_PRIVATE_KEY_PATH points to an existing testnet key file: $(mask_value "${CASPER_PRIVATE_KEY_PATH}")"
     else
       warn "CASPER_PRIVATE_KEY_PATH is set but the file does not exist: $(mask_value "${CASPER_PRIVATE_KEY_PATH}")"
       FAILURES=1
@@ -113,13 +114,17 @@ for name in \
   X402_QUERY_PRICE_CSPR \
   X402_NETWORK \
   CSPR_CLOUD_MODE \
-  CSPR_CLOUD_BASE_URL
+  CSPR_CLOUD_BASE_URL \
+  ORACLE_PAYWALL_QUERY_PRICE_MOTES \
+  ODRA_ALLOW_KEY_OVERRIDE \
+  ODRA_IS_UPGRADABLE
 do
   check_optional "${name}"
 done
 
 warn "Mock modes are acceptable for the hackathon MVP, but they must stay labeled as mock/demo."
 warn "Mainnet CSPR is not required and should not be used for this Dev 2 flow."
+warn "If a shared testnet deployer key is in use, coordinate before deployment to avoid duplicate contract instances."
 
 if [[ ${FAILURES} -ne 0 ]]; then
   exit 1

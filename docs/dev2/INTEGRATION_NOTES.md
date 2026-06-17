@@ -6,23 +6,64 @@ This file contains Dev 2 handoff guidance only. It does not modify Dev 1 or Dev 
 
 Dev 2 owns contract deployment and must hand off values only after Casper testnet confirmation. Do not ask Dev 1 or Dev 3 to hardcode placeholders.
 
-1. Run `./scripts/deploy-contracts.sh` from WSL after deployable Odra Wasm artifacts exist.
-2. Record each deploy hash from `casper-client put-deploy`.
-3. Wait until each deploy succeeds on Casper testnet.
-4. Extract each resulting contract hash from explorer, CSPR.cloud tooling, or deploy effects.
-5. Share the deploy hashes, contract hashes, x402 mode, and CSPR.cloud mode together.
+Preferred workflow: one Dev 2 operator deploys, then shares only deploy hashes and contract hashes. Dev 1 and Dev 3 do not need the deployer private key.
+
+Trusted testnet workflow: trusted Dev 2 teammates may share the same funded testnet deployer key under `keys/deployer/` for hackathon testing only. Coordinate before running `./scripts/deploy-contracts.sh`; if one teammate already deployed, use their hashes instead of creating duplicate instances.
+
+1. Load local `.env` in WSL with `set -a`, `source .env`, then `set +a`.
+2. Run `./scripts/check-dev2-env.sh --deploy`.
+3. Run `cargo test --workspace` and `cargo odra build` from `contracts/`.
+4. Run `./scripts/deploy-contracts.sh` from WSL only after deployable Odra Wasm artifacts exist and the team has agreed who is deploying.
+5. Record each deploy hash from `casper-client put-deploy`.
+6. Wait until each deploy succeeds on Casper testnet.
+7. Extract each resulting contract hash from explorer, CSPR.cloud tooling, or deploy effects.
+8. Share the deploy hashes, contract hashes, x402 mode, and CSPR.cloud mode together.
 
 Populate these values after deployment:
 
 ```env
-CREDIT_REGISTRY_DEPLOY_HASH=deploy-hash-todo-credit-registry
-COMPLIANCE_REGISTRY_DEPLOY_HASH=deploy-hash-todo-compliance-registry
-ORACLE_PAYWALL_DEPLOY_HASH=deploy-hash-todo-oracle-paywall
-REPUTATION_REGISTRY_DEPLOY_HASH=deploy-hash-todo-reputation-registry
-CREDIT_REGISTRY_HASH=hash-todo-credit-registry
-COMPLIANCE_REGISTRY_HASH=hash-todo-compliance-registry
-ORACLE_PAYWALL_HASH=hash-todo-oracle-paywall
-REPUTATION_REGISTRY_HASH=hash-todo-reputation-registry
+CREDIT_REGISTRY_DEPLOY_HASH=
+COMPLIANCE_REGISTRY_DEPLOY_HASH=
+ORACLE_PAYWALL_DEPLOY_HASH=
+REPUTATION_REGISTRY_DEPLOY_HASH=
+CREDIT_REGISTRY_HASH=
+COMPLIANCE_REGISTRY_HASH=
+ORACLE_PAYWALL_HASH=
+REPUTATION_REGISTRY_HASH=
+```
+
+## Odra Artifact Paths
+
+Dev 2 builds and deploys these artifacts:
+
+```txt
+contracts/wasm/CreditRegistry.wasm
+contracts/wasm/ComplianceRegistry.wasm
+contracts/wasm/OraclePaywall.wasm
+contracts/wasm/ReputationRegistry.wasm
+```
+
+Dev 1 and Dev 3 do not need these Wasm files for normal integration. They need only the confirmed testnet deploy hashes, contract hashes, and mode labels.
+
+Verification command sequence for Dev 2 before handoff:
+
+```bash
+set -a
+source .env
+set +a
+
+./scripts/check-dev2-env.sh --deploy
+
+cd contracts
+export RUSTC_BOOTSTRAP=1
+cargo test --workspace
+cargo odra build
+cd ..
+
+python3 -m compileall api/casper api/cspr_cloud
+
+./scripts/deploy-contracts.sh
+./scripts/verify-contracts.sh
 ```
 
 ## Python Entry Points
@@ -131,9 +172,11 @@ Notes:
 
 - Do not expose private keys or CSPR.cloud keys to the browser.
 - `CASPER_PRIVATE_KEY_PATH` stays local to Dev 2 deployment and is never handed to frontend/backend consumers.
+- Shared `keys/deployer/secret_key.pem` is only for trusted Dev 2 testnet deployers and is never handed to Dev 1 or Dev 3.
 - Read final contract hashes from `CREDIT_REGISTRY_HASH`, `COMPLIANCE_REGISTRY_HASH`, `ORACLE_PAYWALL_HASH`, and `REPUTATION_REGISTRY_HASH`.
 - Do not treat `mock` x402 verification as real settlement.
 - Mainnet CSPR is not required for the MVP.
+- Duplicate testnet deployments are possible if multiple shared-key operators deploy the same artifacts; use the agreed hash set.
 
 ## For Dev 3 Review
 
@@ -164,3 +207,4 @@ Notes:
 - Replace placeholder contract hashes after testnet deployment before calling write paths.
 - Do not call write paths until Dev 2 has confirmed deploy hashes and contract hashes.
 - Mainnet CSPR is not required for the MVP.
+- Duplicate testnet deployments are possible if multiple shared-key operators deploy the same artifacts; use the agreed hash set.

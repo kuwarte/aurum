@@ -1,0 +1,668 @@
+{
+  "jsonrpc": "2.0",
+  "id": -4756262828457067048,
+  "result": {
+    "api_version": "2.0.0",
+    "deploy": {
+      "hash": "d5f17d53bd7a756fbbf0b6e6f54992814a99bcdf166dfb37c93166c47a135c5f",
+      "header": {
+        "account": "01a91d628758278b37b08990071fc2562a9212e43646cd034010bd4d0504c54388",
+        "timestamp": "2026-06-17T05:54:50.905Z",
+        "ttl": "30m",
+        "gas_price": 1,
+        "body_hash": "9773066a1d7f7a2d71aeda9274b07ff5bd36c2dd51dd59887058c9d48a3ea349",
+        "dependencies": [],
+        "chain_name": "casper-test"
+      },
+      "payment": {
+        "ModuleBytes": {
+          "module_bytes": "",
+          "args": [
+            [
+              "amount",
+              {
+                "cl_type": "U512",
+                "bytes": "0500b864d945",
+                "parsed": "300000000000"
+              }
+            ]
+          ]
+        }
+      },
+      "session": {
+        "ModuleBytes": {
+          "module_bytes": "[571378 hex chars]",
+          "args": [
+            [
+              "odra_cfg_package_hash_key_name",
+              {
+                "cl_type": "String",
+                "bytes": "1f00000052657075746174696f6e52656769737472795f7061636b6167655f68617368",
+                "parsed": "ReputationRegistry_package_hash"
+              }
+            ],
+            [
+              "odra_cfg_allow_key_override",
+              {
+                "cl_type": "Bool",
+                "bytes": "01",
+                "parsed": true
+              }
+            ],
+            [
+              "odra_cfg_is_upgradable",
+              {
+                "cl_type": "Bool",
+                "bytes": "00",
+                "parsed": false
+              }
+            ],
+            [
+              "odra_cfg_is_upgrade",
+              {
+                "cl_type": "Bool",
+                "bytes": "00",
+                "parsed": false
+              }
+            ],
+            [
+              "admin",
+              {
+                "cl_type": "String",
+                "bytes": "[162 hex chars]",
+                "parsed": "account-hash-e1b7c78127d7b8b652ec00dd074a74bd47b5a9eebe1fd94cec3bb3e2ce7d8dad"
+              }
+            ]
+          ]
+        }
+      },
+      "approvals": [
+        {
+          "signer": "01a91d628758278b37b08990071fc2562a9212e43646cd034010bd4d0504c54388",
+          "signature": "016fa5817b0ef6e119071c9fe6ce45d45136f0002909cd398e7fca9f9b73c46432eeac34b104f31bb7309836a5b3e6fcf6a39a3616d38dad85131738cc907ed503"
+        }
+      ]
+    },
+    "execution_info": {
+      "block_hash": "0ea7d904c4e6ebc21c8f74b4cde9c4249bbbc9d6e01fccf3ea84ba0633f314aa",
+      "block_height": 8207063,
+      "execution_result": {
+        "Version2": {
+          "initiator": {
+            "PublicKey": "01a91d628758278b37b08990071fc2562a9212e43646cd034010bd4d0504c54388"
+          },
+          "error_message": null,
+          "current_price": 1,
+          "limit": "300000000000",
+          "consumed": "282819436592",
+          "cost": "300000000000",
+          "refund": "12885422556",
+          "transfers": [],
+          "size_estimate": 286237,
+          "effects": [
+            {
+              "key": "balance-hold-0199736da5e3151f6dec7c4cc8f5c101ea19d242357f5f750b4ed274b4d6726602d1ee25d49e010000",
+              "kind": {
+                "Write": {
+                  "CLValue": {
+                    "cl_type": "U512",
+                    "bytes": "0500b864d945",
+                    "parsed": "300000000000"
+                  }
+                }
+              }
+            },
+            {
+              "key": "uref-bab4ca031b362500738628e5ae606f089093da1df7d112eae939d9ee463bae54-000",
+              "kind": {
+                "Write": {
+                  "CLValue": {
+                    "cl_type": "Unit",
+                    "bytes": "",
+                    "parsed": null
+                  }
+                }
+              }
+            },
+            {
+              "key": "uref-93ace006317ea1951e79be72b80dbc1eec07b1a3615f8efa3542bf70d0780c6d-000",
+              "kind": {
+                "Write": {
+                  "CLValue": {
+                    "cl_type": "Unit",
+                    "bytes": "",
+                    "parsed": null
+                  }
+                }
+              }
+            },
+            {
+              "key": "uref-ad32b3ccf71ecc9065cfc257ea1314e0874aee2434ef0cd41100a1643a07bac9-000",
+              "kind": {
+                "Write": {
+                  "CLValue": {
+                    "cl_type": "U32",
+                    "bytes": "00000000",
+                    "parsed": 0
+                  }
+                }
+              }
+            },
+            {
+              "key": "uref-8721e7f10cbfdf1933846aa6e750ece1f228289e416c8cdf932628c78fab5867-000",
+              "kind": {
+                "Write": {
+                  "CLValue": {
+                    "cl_type": "String",
+                    "bytes": "03000000312e31",
+                    "parsed": "1.1"
+                  }
+                }
+              }
+            },
+            {
+              "key": "uref-559e8a6c0ab313dd503abd8d3989045dcdd0aacdd6cdbd0d144f1e181039f8d8-000",
+              "kind": {
+                "Write": {
+                  "CLValue": {
+                    "cl_type": {
+                      "Map": {
+                        "key": "String",
+                        "value": {
+                          "List": {
+                            "Tuple2": [
+                              "String",
+                              "Any"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "bytes": "00000000",
+                    "parsed": []
+                  }
+                }
+              }
+            },
+            {
+              "key": "uref-88608a8231c5ec9d6a1d135437c906f375d79aafbc1fb7f5cd29e935f4394be5-000",
+              "kind": {
+                "Write": {
+                  "CLValue": {
+                    "cl_type": "Unit",
+                    "bytes": "",
+                    "parsed": null
+                  }
+                }
+              }
+            },
+            {
+              "key": "hash-1676906bd1dbbd59d1949737a1ea9776be73b967dc4973cd114ea29dc67b7bec",
+              "kind": {
+                "Write": {
+                  "ContractPackage": {
+                    "access_key": "uref-88608a8231c5ec9d6a1d135437c906f375d79aafbc1fb7f5cd29e935f4394be5-007",
+                    "versions": [],
+                    "disabled_versions": [],
+                    "groups": [],
+                    "lock_status": "Locked"
+                  }
+                }
+              }
+            },
+            {
+              "key": "account-hash-e1b7c78127d7b8b652ec00dd074a74bd47b5a9eebe1fd94cec3bb3e2ce7d8dad",
+              "kind": {
+                "AddKeys": [
+                  {
+                    "name": "ReputationRegistry_package_hash",
+                    "key": "hash-1676906bd1dbbd59d1949737a1ea9776be73b967dc4973cd114ea29dc67b7bec"
+                  }
+                ]
+              }
+            },
+            {
+              "key": "account-hash-e1b7c78127d7b8b652ec00dd074a74bd47b5a9eebe1fd94cec3bb3e2ce7d8dad",
+              "kind": {
+                "AddKeys": [
+                  {
+                    "name": "ReputationRegistry_package_hash_access_token",
+                    "key": "uref-88608a8231c5ec9d6a1d135437c906f375d79aafbc1fb7f5cd29e935f4394be5-007"
+                  }
+                ]
+              }
+            },
+            {
+              "key": "hash-1676906bd1dbbd59d1949737a1ea9776be73b967dc4973cd114ea29dc67b7bec",
+              "kind": "Identity"
+            },
+            {
+              "key": "message-topic-entity-contract-5bca99a0210243c2d700994cd198ff805962b58f2b84d19054720ab759f8aac0-e0846cb0e9995ea903dd1b6a275f9c7d9f23e2f83b6918a8a01ba857ff7efdad",
+              "kind": {
+                "Write": {
+                  "MessageTopic": {
+                    "message_count": 0,
+                    "blocktime": 1781675716305,
+                    "topic_name": "EVENTS"
+                  }
+                }
+              }
+            },
+            {
+              "key": "hash-13485c780e6688a1f5fa0b73ab1b4a621217904adf26f6396b1d3466f417a5fc",
+              "kind": {
+                "Write": {
+                  "ContractWasm": {
+                    "bytes": "[500664 hex chars]"
+                  }
+                }
+              }
+            },
+            {
+              "key": "hash-5bca99a0210243c2d700994cd198ff805962b58f2b84d19054720ab759f8aac0",
+              "kind": {
+                "Write": {
+                  "Contract": {
+                    "contract_package_hash": "contract-package-1676906bd1dbbd59d1949737a1ea9776be73b967dc4973cd114ea29dc67b7bec",
+                    "contract_wasm_hash": "contract-wasm-13485c780e6688a1f5fa0b73ab1b4a621217904adf26f6396b1d3466f417a5fc",
+                    "named_keys": [
+                      {
+                        "name": "__events",
+                        "key": "uref-93ace006317ea1951e79be72b80dbc1eec07b1a3615f8efa3542bf70d0780c6d-007"
+                      },
+                      {
+                        "name": "__events_ces_version",
+                        "key": "uref-8721e7f10cbfdf1933846aa6e750ece1f228289e416c8cdf932628c78fab5867-007"
+                      },
+                      {
+                        "name": "__events_length",
+                        "key": "uref-ad32b3ccf71ecc9065cfc257ea1314e0874aee2434ef0cd41100a1643a07bac9-007"
+                      },
+                      {
+                        "name": "__events_schema",
+                        "key": "uref-559e8a6c0ab313dd503abd8d3989045dcdd0aacdd6cdbd0d144f1e181039f8d8-007"
+                      },
+                      {
+                        "name": "state",
+                        "key": "uref-bab4ca031b362500738628e5ae606f089093da1df7d112eae939d9ee463bae54-007"
+                      }
+                    ],
+                    "entry_points": [
+                      {
+                        "name": "assign_role",
+                        "args": [
+                          {
+                            "name": "caller",
+                            "cl_type": "String"
+                          },
+                          {
+                            "name": "account",
+                            "cl_type": "String"
+                          },
+                          {
+                            "name": "role",
+                            "cl_type": "U8"
+                          }
+                        ],
+                        "ret": "Unit",
+                        "access": "Public",
+                        "entry_point_type": "Called"
+                      },
+                      {
+                        "name": "attest_reputation",
+                        "args": [
+                          {
+                            "name": "caller",
+                            "cl_type": "String"
+                          },
+                          {
+                            "name": "borrower",
+                            "cl_type": "String"
+                          },
+                          {
+                            "name": "reputation_score",
+                            "cl_type": "U8"
+                          },
+                          {
+                            "name": "dao_participation_count",
+                            "cl_type": "U32"
+                          },
+                          {
+                            "name": "loans_fulfilled_count",
+                            "cl_type": "U32"
+                          },
+                          {
+                            "name": "disputes_count",
+                            "cl_type": "U32"
+                          },
+                          {
+                            "name": "peer_attestations_count",
+                            "cl_type": "U32"
+                          },
+                          {
+                            "name": "evidence_hash",
+                            "cl_type": "String"
+                          },
+                          {
+                            "name": "last_updated_at",
+                            "cl_type": "U64"
+                          }
+                        ],
+                        "ret": "Unit",
+                        "access": "Public",
+                        "entry_point_type": "Called"
+                      },
+                      {
+                        "name": "get_evidence_hash",
+                        "args": [
+                          {
+                            "name": "borrower",
+                            "cl_type": "String"
+                          }
+                        ],
+                        "ret": "String",
+                        "access": "Public",
+                        "entry_point_type": "Called"
+                      },
+                      {
+                        "name": "get_reputation_score",
+                        "args": [
+                          {
+                            "name": "borrower",
+                            "cl_type": "String"
+                          }
+                        ],
+                        "ret": "U8",
+                        "access": "Public",
+                        "entry_point_type": "Called"
+                      },
+                      {
+                        "name": "init",
+                        "args": [
+                          {
+                            "name": "admin",
+                            "cl_type": "String"
+                          }
+                        ],
+                        "ret": "Unit",
+                        "access": {
+                          "Groups": [
+                            "constructor_group"
+                          ]
+                        },
+                        "entry_point_type": "Called"
+                      },
+                      {
+                        "name": "slash_reputation",
+                        "args": [
+                          {
+                            "name": "caller",
+                            "cl_type": "String"
+                          },
+                          {
+                            "name": "borrower",
+                            "cl_type": "String"
+                          },
+                          {
+                            "name": "new_score",
+                            "cl_type": "U8"
+                          },
+                          {
+                            "name": "disputes_count",
+                            "cl_type": "U32"
+                          },
+                          {
+                            "name": "evidence_hash",
+                            "cl_type": "String"
+                          },
+                          {
+                            "name": "timestamp",
+                            "cl_type": "U64"
+                          }
+                        ],
+                        "ret": "Unit",
+                        "access": "Public",
+                        "entry_point_type": "Called"
+                      }
+                    ],
+                    "protocol_version": "2.2.1"
+                  }
+                }
+              }
+            },
+            {
+              "key": "hash-1676906bd1dbbd59d1949737a1ea9776be73b967dc4973cd114ea29dc67b7bec",
+              "kind": {
+                "Write": {
+                  "ContractPackage": {
+                    "access_key": "uref-88608a8231c5ec9d6a1d135437c906f375d79aafbc1fb7f5cd29e935f4394be5-007",
+                    "versions": [
+                      {
+                        "protocol_version_major": 2,
+                        "contract_version": 1,
+                        "contract_hash": "contract-5bca99a0210243c2d700994cd198ff805962b58f2b84d19054720ab759f8aac0"
+                      }
+                    ],
+                    "disabled_versions": [],
+                    "groups": [],
+                    "lock_status": "Locked"
+                  }
+                }
+              }
+            },
+            {
+              "key": "hash-1676906bd1dbbd59d1949737a1ea9776be73b967dc4973cd114ea29dc67b7bec",
+              "kind": "Identity"
+            },
+            {
+              "key": "uref-5fd2fbaba5ecc927e54bc1ccfeb23f80c6ba9b9994eb5b3af3768b690d1a4f54-000",
+              "kind": {
+                "Write": {
+                  "CLValue": {
+                    "cl_type": "Unit",
+                    "bytes": "",
+                    "parsed": null
+                  }
+                }
+              }
+            },
+            {
+              "key": "hash-1676906bd1dbbd59d1949737a1ea9776be73b967dc4973cd114ea29dc67b7bec",
+              "kind": {
+                "Write": {
+                  "ContractPackage": {
+                    "access_key": "uref-88608a8231c5ec9d6a1d135437c906f375d79aafbc1fb7f5cd29e935f4394be5-007",
+                    "versions": [
+                      {
+                        "protocol_version_major": 2,
+                        "contract_version": 1,
+                        "contract_hash": "contract-5bca99a0210243c2d700994cd198ff805962b58f2b84d19054720ab759f8aac0"
+                      }
+                    ],
+                    "disabled_versions": [],
+                    "groups": [
+                      {
+                        "group_name": "constructor_group",
+                        "group_users": [
+                          "uref-5fd2fbaba5ecc927e54bc1ccfeb23f80c6ba9b9994eb5b3af3768b690d1a4f54-007"
+                        ]
+                      }
+                    ],
+                    "lock_status": "Locked"
+                  }
+                }
+              }
+            },
+            {
+              "key": "hash-1676906bd1dbbd59d1949737a1ea9776be73b967dc4973cd114ea29dc67b7bec",
+              "kind": "Identity"
+            },
+            {
+              "key": "hash-5bca99a0210243c2d700994cd198ff805962b58f2b84d19054720ab759f8aac0",
+              "kind": "Identity"
+            },
+            {
+              "key": "hash-13485c780e6688a1f5fa0b73ab1b4a621217904adf26f6396b1d3466f417a5fc",
+              "kind": "Identity"
+            },
+            {
+              "key": "dictionary-d442395d33c444499fc37542dd677abbb4e93932835176346018e17d497c4540",
+              "kind": {
+                "Write": {
+                  "CLValue": {
+                    "cl_type": "Any",
+                    "bytes": "[230 hex chars]",
+                    "parsed": null
+                  }
+                }
+              }
+            },
+            {
+              "key": "hash-1676906bd1dbbd59d1949737a1ea9776be73b967dc4973cd114ea29dc67b7bec",
+              "kind": "Identity"
+            },
+            {
+              "key": "hash-1676906bd1dbbd59d1949737a1ea9776be73b967dc4973cd114ea29dc67b7bec",
+              "kind": {
+                "Write": {
+                  "ContractPackage": {
+                    "access_key": "uref-88608a8231c5ec9d6a1d135437c906f375d79aafbc1fb7f5cd29e935f4394be5-007",
+                    "versions": [
+                      {
+                        "protocol_version_major": 2,
+                        "contract_version": 1,
+                        "contract_hash": "contract-5bca99a0210243c2d700994cd198ff805962b58f2b84d19054720ab759f8aac0"
+                      }
+                    ],
+                    "disabled_versions": [],
+                    "groups": [
+                      {
+                        "group_name": "constructor_group",
+                        "group_users": []
+                      }
+                    ],
+                    "lock_status": "Locked"
+                  }
+                }
+              }
+            },
+            {
+              "key": "hash-1676906bd1dbbd59d1949737a1ea9776be73b967dc4973cd114ea29dc67b7bec",
+              "kind": "Identity"
+            },
+            {
+              "key": "uref-df7f12d57001c4889be52a869e0a340414a1976a337d7cf8d26303df5a1212bf-000",
+              "kind": {
+                "Write": {
+                  "CLValue": {
+                    "cl_type": "Unit",
+                    "bytes": "",
+                    "parsed": null
+                  }
+                }
+              }
+            },
+            {
+              "key": "hash-1676906bd1dbbd59d1949737a1ea9776be73b967dc4973cd114ea29dc67b7bec",
+              "kind": {
+                "Write": {
+                  "ContractPackage": {
+                    "access_key": "uref-88608a8231c5ec9d6a1d135437c906f375d79aafbc1fb7f5cd29e935f4394be5-007",
+                    "versions": [
+                      {
+                        "protocol_version_major": 2,
+                        "contract_version": 1,
+                        "contract_hash": "contract-5bca99a0210243c2d700994cd198ff805962b58f2b84d19054720ab759f8aac0"
+                      }
+                    ],
+                    "disabled_versions": [],
+                    "groups": [
+                      {
+                        "group_name": "constructor_group",
+                        "group_users": []
+                      },
+                      {
+                        "group_name": "upgrader_group",
+                        "group_users": [
+                          "uref-df7f12d57001c4889be52a869e0a340414a1976a337d7cf8d26303df5a1212bf-007"
+                        ]
+                      }
+                    ],
+                    "lock_status": "Locked"
+                  }
+                }
+              }
+            },
+            {
+              "key": "hash-1676906bd1dbbd59d1949737a1ea9776be73b967dc4973cd114ea29dc67b7bec",
+              "kind": "Identity"
+            },
+            {
+              "key": "hash-1676906bd1dbbd59d1949737a1ea9776be73b967dc4973cd114ea29dc67b7bec",
+              "kind": {
+                "Write": {
+                  "ContractPackage": {
+                    "access_key": "uref-88608a8231c5ec9d6a1d135437c906f375d79aafbc1fb7f5cd29e935f4394be5-007",
+                    "versions": [
+                      {
+                        "protocol_version_major": 2,
+                        "contract_version": 1,
+                        "contract_hash": "contract-5bca99a0210243c2d700994cd198ff805962b58f2b84d19054720ab759f8aac0"
+                      }
+                    ],
+                    "disabled_versions": [],
+                    "groups": [
+                      {
+                        "group_name": "constructor_group",
+                        "group_users": []
+                      },
+                      {
+                        "group_name": "upgrader_group",
+                        "group_users": []
+                      }
+                    ],
+                    "lock_status": "Locked"
+                  }
+                }
+              }
+            },
+            {
+              "key": "balance-hold-0199736da5e3151f6dec7c4cc8f5c101ea19d242357f5f750b4ed274b4d6726602d1ee25d49e010000",
+              "kind": {
+                "Prune": "balance-hold-0199736da5e3151f6dec7c4cc8f5c101ea19d242357f5f750b4ed274b4d6726602d1ee25d49e010000"
+              }
+            },
+            {
+              "key": "balance-99736da5e3151f6dec7c4cc8f5c101ea19d242357f5f750b4ed274b4d6726602",
+              "kind": {
+                "Write": {
+                  "CLValue": {
+                    "cl_type": "U512",
+                    "bytes": "06beeb660a9201",
+                    "parsed": "1726751370174"
+                  }
+                }
+              }
+            },
+            {
+              "key": "uref-5d7b1b23197cda53dec593caf30836a5740afa2279b356fae74bf1bdc2b2e725-000",
+              "kind": "Identity"
+            },
+            {
+              "key": "uref-5d7b1b23197cda53dec593caf30836a5740afa2279b356fae74bf1bdc2b2e725-000",
+              "kind": {
+                "Write": {
+                  "CLValue": {
+                    "cl_type": "U512",
+                    "bytes": "0836eb067cc0548fba",
+                    "parsed": "13443056598415502134"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
