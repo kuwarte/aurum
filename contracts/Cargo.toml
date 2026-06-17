@@ -4,6 +4,7 @@ members = [
     "compliance_registry",
     "oracle_paywall",
     "reputation_registry",
+    "odra",
 ]
 resolver = "2"
 
@@ -13,5 +14,8 @@ license = "MIT"
 version = "0.1.0"
 
 [workspace.dependencies]
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
 thiserror = "1.0"
+odra = "2.8.1"
+odra-build = "2.8.1"
+odra-vm = "2.8.1"

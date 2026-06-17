@@ -1,0 +1,6 @@
+contracts = [
+  { fqn = "aurum_odra_contracts::CreditRegistry" },
+  { fqn = "aurum_odra_contracts::ComplianceRegistry" },
+  { fqn = "aurum_odra_contracts::OraclePaywall" },
+  { fqn = "aurum_odra_contracts::ReputationRegistry" },
+]

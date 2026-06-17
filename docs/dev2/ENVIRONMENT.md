@@ -1,107 +1,105 @@
 # Dev 2 Environment
 
-This document explains which values Dev 2 needs for local build checks, Casper testnet deployment preparation, Python helper usage, x402 payment mode selection, and CSPR.cloud mode selection. All values must be configured with placeholders or local secrets only; mainnet CSPR is not required for the MVP.
+All values are for local development and Casper testnet. Do not commit real `.env` values, private keys, API keys, or funded account details.
 
-## Build-Only Variables
+## Casper Network
 
 ```env
-CASPER_RPC_URL=https://node.testnet.cspr.cloud/rpc
+CASPER_RPC_URL=https://rpc.testnet.casper.network/rpc
 CASPER_NETWORK_NAME=casper-test
 CASPER_DEPLOY_CHAIN_NAME=casper-test
-CASPER_PRIVATE_KEY=replace_with_server_side_private_key_or_secret_mount
-CASPER_PUBLIC_KEY=01_replace_with_testnet_public_key
-CASPER_ACCOUNT_HASH=account-hash-replace-with-testnet-account
+CASPER_PUBLIC_KEY=<wsl_deployer_public_key>
+CASPER_ACCOUNT_HASH=<wsl_deployer_account_hash>
 ```
 
-Use these values for:
+`CASPER_NETWORK_NAME` and `CASPER_DEPLOY_CHAIN_NAME` must remain testnet values for this flow.
 
-- Python wrapper imports and config loading
-- Rust build/test preparation
-- local deployment scripting
+## Signing
 
-## Testnet Deployment Variables
+Preferred:
 
 ```env
-CASPER_EXPECTED_CONTRACTS=credit_registry,compliance_registry,oracle_paywall,reputation_registry
-CREDIT_REGISTRY_DEPLOY_HASH=deploy-hash-todo-credit-registry
-COMPLIANCE_REGISTRY_DEPLOY_HASH=deploy-hash-todo-compliance-registry
-ORACLE_PAYWALL_DEPLOY_HASH=deploy-hash-todo-oracle-paywall
-REPUTATION_REGISTRY_DEPLOY_HASH=deploy-hash-todo-reputation-registry
-CREDIT_REGISTRY_HASH=hash-todo-credit-registry
-COMPLIANCE_REGISTRY_HASH=hash-todo-compliance-registry
-ORACLE_PAYWALL_HASH=hash-todo-oracle-paywall
-REPUTATION_REGISTRY_HASH=hash-todo-reputation-registry
+CASPER_PRIVATE_KEY_PATH=./keys/deployer/secret_key.pem
+CASPER_PRIVATE_KEY=
 ```
 
-Use these values for:
+Fallback only:
 
-- recording successful deploy transactions
-- handing final contract hashes to Dev 1 and Dev 3
-- post-deploy Python wrapper testing
+```env
+CASPER_PRIVATE_KEY=<discouraged_key_path_or_secret_mount>
+```
 
-## x402 Mock Mode Variables
+Use `CASPER_PRIVATE_KEY_PATH` whenever possible. Never print `secret_key.pem` or paste private key contents into chat, docs, scripts, or source.
+
+Trusted teammate sharing is allowed only for the hackathon Casper testnet deployer. The shared package should contain local files under `keys/deployer/`, and `.env` should reference `CASPER_PRIVATE_KEY_PATH=./keys/deployer/secret_key.pem`. Do not convert the PEM contents into `CASPER_PRIVATE_KEY`.
+
+Coordinate before running `./scripts/deploy-contracts.sh` with a shared deployer key. If one teammate has already deployed, use their deploy hashes and contract hashes instead of submitting duplicate contract instances.
+
+## Deployment Records
+
+Deploy hashes are populated after each successful testnet deploy submission:
+
+```env
+CREDIT_REGISTRY_DEPLOY_HASH=
+COMPLIANCE_REGISTRY_DEPLOY_HASH=
+ORACLE_PAYWALL_DEPLOY_HASH=
+REPUTATION_REGISTRY_DEPLOY_HASH=
+```
+
+Contract hashes are populated only after deploy confirmation and inspection of deploy effects:
+
+```env
+CREDIT_REGISTRY_HASH=
+COMPLIANCE_REGISTRY_HASH=
+ORACLE_PAYWALL_HASH=
+REPUTATION_REGISTRY_HASH=
+```
+
+Until these are real values, downstream contract calls should treat the contracts as not deployed.
+
+## x402
+
+Mock mode:
 
 ```env
 X402_MODE=mock
-X402_FACILITATOR_URL=https://todo-facilitator.example
-X402_TREASURY_ACCOUNT=account-hash-replace-with-testnet-treasury
-X402_QUERY_PRICE_CSPR=1.50
 X402_NETWORK=casper-test
+X402_TREASURY_ACCOUNT=<wsl_deployer_account_hash>
+X402_QUERY_PRICE_CSPR=1.50
+X402_FACILITATOR_URL=
 ```
 
-Use these values for:
-
-- hackathon demo flows where payment verification is simulated
-- backend tests that must label payment state clearly as mock
-
-## x402 Live Mode Variables
+Live mode:
 
 ```env
 X402_MODE=live
-X402_FACILITATOR_URL=https://todo-facilitator.example
-X402_TREASURY_ACCOUNT=account-hash-replace-with-testnet-treasury
-X402_QUERY_PRICE_CSPR=1.50
 X402_NETWORK=casper-test
+X402_TREASURY_ACCOUNT=<testnet_treasury_account_hash>
+X402_QUERY_PRICE_CSPR=1.50
+X402_FACILITATOR_URL=<tested_facilitator_url>
 ```
 
-Use these values only when:
+Do not set `X402_MODE=live` unless real payment-proof verification and settlement have been implemented and tested.
 
-- the real facilitator URL is known
-- payment-proof verification is actually implemented and tested
+## CSPR.cloud
 
-Live mode is not production-complete in the current branch.
-
-## CSPR.cloud Mock Mode Variables
+Mock mode:
 
 ```env
 CSPR_CLOUD_MODE=mock
-CSPR_CLOUD_KEY=replace-with-cspr-cloud-api-key
 CSPR_CLOUD_BASE_URL=https://api.testnet.cspr.cloud
-CSPR_CLOUD_STREAMING_URL=wss://streaming.testnet.cspr.cloud
-CSPR_NODE_RPC_URL=https://node.testnet.cspr.cloud
-CSPR_NODE_SSE_URL=https://node-sse.testnet.cspr.cloud
-CSPR_CLOUD_WALLET_ACTIVITY_PATH=
-CSPR_CLOUD_DEFI_POSITIONS_PATH=
-CSPR_CLOUD_LOANS_PATH=
-CSPR_CLOUD_REPAYMENTS_PATH=
-CSPR_CLOUD_YIELD_PATH=
-CSPR_CLOUD_RWA_PATH=
+CSPR_CLOUD_KEY=
 ```
 
-Use these values for:
-
-- demo-safe mock data during scoring and backend integration
-- local wrapper tests when live CSPR.cloud routes are not pinned
-
-## CSPR.cloud Live Mode Variables
+Live mode:
 
 ```env
 CSPR_CLOUD_MODE=live
-CSPR_CLOUD_KEY=replace-with-cspr-cloud-api-key
 CSPR_CLOUD_BASE_URL=https://api.testnet.cspr.cloud
 CSPR_CLOUD_STREAMING_URL=wss://streaming.testnet.cspr.cloud
 CSPR_NODE_RPC_URL=https://node.testnet.cspr.cloud
 CSPR_NODE_SSE_URL=https://node-sse.testnet.cspr.cloud
+CSPR_CLOUD_KEY=<server_side_api_key>
 CSPR_CLOUD_WALLET_ACTIVITY_PATH=wallets/{account_hash}/activity
 CSPR_CLOUD_DEFI_POSITIONS_PATH=defi/{account_hash}/positions
 CSPR_CLOUD_LOANS_PATH=defi/{account_hash}/loans
@@ -110,27 +108,62 @@ CSPR_CLOUD_YIELD_PATH=defi/{account_hash}/yield
 CSPR_CLOUD_RWA_PATH=rwa/{account_hash}/events
 ```
 
-Use these values only when:
+Only use live mode when route templates and credentials are confirmed against testnet.
 
-- the route templates have been confirmed against CSPR.cloud
-- the API key is available server-side
-- the team is ready to distinguish live data from mock/demo fallback
-- REST, streaming, and node endpoints are pointed at Casper testnet
+## Optional Deployment Tuning
+
+```env
+CASPER_DEPLOY_PAYMENT_AMOUNT=300000000000
+CASPER_EXPECTED_CONTRACTS=credit_registry,compliance_registry,oracle_paywall,reputation_registry
+ORACLE_PAYWALL_QUERY_PRICE_MOTES=1500000000
+ODRA_ALLOW_KEY_OVERRIDE=true
+ODRA_IS_UPGRADABLE=false
+```
+
+`CASPER_DEPLOY_PAYMENT_AMOUNT` is passed to `casper-client put-deploy` when Wasm artifacts exist.
+`ORACLE_PAYWALL_QUERY_PRICE_MOTES` is the `OraclePaywall.init()` price in motes. It must be an integer.
+`ODRA_ALLOW_KEY_OVERRIDE` and `ODRA_IS_UPGRADABLE` are passed as Odra `odra_cfg_*` install arguments.
+
+`User error: 64658` on an Odra install deploy means Odra `ExecutionError::MissingArg`. For these contracts, that usually means the Wasm was submitted with raw `--session-path` but without Odra install args such as `odra_cfg_package_hash_key_name`, `odra_cfg_allow_key_override`, `odra_cfg_is_upgradable`, and `odra_cfg_is_upgrade`, or without the module constructor args.
+
+## Odra Build Toolchain
+
+These are shell/toolchain settings, not application secrets:
+
+```bash
+export RUSTC_BOOTSTRAP=1
+rustup target add wasm32-unknown-unknown
+cargo install cargo-odra --locked
+```
+
+Use the setting above or a compatible pinned nightly toolchain for Odra 2.8.1 builds.
+
+Teammate verification commands:
+
+```bash
+set -a
+source .env
+set +a
+
+./scripts/check-dev2-env.sh --deploy
+
+cd contracts
+export RUSTC_BOOTSTRAP=1
+cargo test --workspace
+cargo odra build
+cd ..
+
+python3 -m compileall api/casper api/cspr_cloud
+```
 
 ## Security Notes
 
-- Never commit real private keys, treasury accounts tied to production value, or API keys.
-- Keep all secrets server-side only.
-- The MVP is testnet-only; mainnet CSPR is not required.
-- `X402_MODE=mock` and `CSPR_CLOUD_MODE=mock` are acceptable for the hackathon demo as long as they are labeled clearly.
-- `CASPER_DEPLOY_CHAIN_NAME` should match the testnet target used by the final Odra deploy command.
-
-## Testnet Funding Requirement
-
-Testnet CSPR is required for:
-
-- deploying future Odra-wrapped contracts
-- future write calls to the registries and oracle paywall
-- demo paid-query flows once live contract interaction is added
-
-Use the Casper faucet referenced in the repository `README.md`.
+- `.env`, `keys/`, and `*.pem` are local-only.
+- Do not print or paste `keys/deployer/secret_key.pem`.
+- Do not use the shared testnet deployer on mainnet or with production funds.
+- `target/` is build output and should not be committed.
+- `wasm/` is generated contract output; verify artifacts before sharing or committing.
+- `Cargo.toml` and `Cargo.lock` are safe to commit.
+- Mainnet CSPR is not required and must not be used for this Dev 2 flow.
+- Testnet CSPR is required for deployment testing.
+- Mock/live labels must be accurate for x402 and CSPR.cloud.
