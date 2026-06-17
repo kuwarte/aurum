@@ -2,9 +2,17 @@
 
 This file contains Dev 2 handoff guidance only. It does not modify Dev 1 or Dev 3 owned files.
 
-## Contract Hash Placeholders
+## Contract Hash Handoff Process
 
-Populate these values after Casper testnet deployment and share them with Dev 1 and Dev 3 from the same source of truth:
+Dev 2 owns contract deployment and must hand off values only after Casper testnet confirmation. Do not ask Dev 1 or Dev 3 to hardcode placeholders.
+
+1. Run `./scripts/deploy-contracts.sh` from WSL after deployable Odra Wasm artifacts exist.
+2. Record each deploy hash from `casper-client put-deploy`.
+3. Wait until each deploy succeeds on Casper testnet.
+4. Extract each resulting contract hash from explorer, CSPR.cloud tooling, or deploy effects.
+5. Share the deploy hashes, contract hashes, x402 mode, and CSPR.cloud mode together.
+
+Populate these values after deployment:
 
 ```env
 CREDIT_REGISTRY_DEPLOY_HASH=deploy-hash-todo-credit-registry
@@ -122,6 +130,7 @@ payment_requirement = verifier.build_payment_requirement()
 Notes:
 
 - Do not expose private keys or CSPR.cloud keys to the browser.
+- `CASPER_PRIVATE_KEY_PATH` stays local to Dev 2 deployment and is never handed to frontend/backend consumers.
 - Read final contract hashes from `CREDIT_REGISTRY_HASH`, `COMPLIANCE_REGISTRY_HASH`, `ORACLE_PAYWALL_HASH`, and `REPUTATION_REGISTRY_HASH`.
 - Do not treat `mock` x402 verification as real settlement.
 - Mainnet CSPR is not required for the MVP.
@@ -153,4 +162,5 @@ Notes:
 - Treat `CSPR_CLOUD_MODE=mock` as demo fallback data only.
 - Swap mock/live CSPR.cloud modes via environment variables only.
 - Replace placeholder contract hashes after testnet deployment before calling write paths.
+- Do not call write paths until Dev 2 has confirmed deploy hashes and contract hashes.
 - Mainnet CSPR is not required for the MVP.

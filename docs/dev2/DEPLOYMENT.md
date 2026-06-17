@@ -1,215 +1,216 @@
 # Dev 2 Deployment
 
-This runbook covers the safe Dev 2 deployment flow for Aurum's contract and data-layer scope. It is intentionally testnet-only for the hackathon MVP and does not claim on-chain deployment success unless real deploy commands and explorer confirmations have happened.
+This runbook is testnet-only. It covers the Windows/WSL setup, local validation, real deploy submission path, and the current Odra blocker for Aurum Dev 2.
 
-## Prerequisites
+## Current Contract Status
 
-- Rust toolchain with `cargo`
-- Python available for `compileall` checks
-- Casper testnet account funded with testnet CSPR
-- Final Odra CLI/toolchain version agreed by the team
-- Environment variables populated from `.env.example`
+The current `contracts/` workspace contains Rust domain/state-machine crates:
 
-## Required Tools
+- `credit_registry`
+- `compliance_registry`
+- `oracle_paywall`
+- `reputation_registry`
 
-- `cargo`
-- `bash`
-- `python`
-- final Odra CLI once the team pins the version
-- access to a Casper testnet explorer or CSPR.cloud testnet tooling
+They are not deployable Odra contracts yet. There is no `Odra.toml`, no Odra dependency, and no `wasm32-unknown-unknown` contract artifact. `scripts/deploy-contracts.sh` now supports real Casper testnet deployment with `casper-client put-deploy` once deployable Wasm artifacts exist, but it intentionally fails before broadcasting if those artifacts are missing.
 
-## Required Environment Variables
+Exact next technical step: pin the Odra toolchain, wrap the current Rust logic with Odra modules/storage/events/entrypoints, build release Wasm artifacts, then rerun the deploy script.
 
-At minimum, set:
+## Windows And WSL Setup
+
+Run this from PowerShell as Administrator:
+
+```bash
+wsl --install
+```
+
+After restart, open Ubuntu/WSL:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential pkg-config libssl-dev curl git python3 python3-pip
+
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+
+cargo --version
+rustc --version
+
+cargo install casper-client
+casper-client --version
+```
+
+Locate the Windows repo from WSL using `/mnt/<drive>/...`:
+
+```bash
+cd /mnt/d/zeank/Desktop/Projects/aurum
+git checkout feature/contracts-data-layer
+```
+
+## Generate Deployer Keys
+
+Generate a testnet deployer keypair inside the repo:
+
+```bash
+mkdir -p keys/deployer
+casper-client keygen keys/deployer
+cat keys/deployer/public_key_hex
+```
+
+Do not print, copy into chat, or commit `keys/deployer/secret_key.pem`.
+
+## Environment
+
+Use local `.env` values like this:
 
 ```env
-CASPER_RPC_URL=https://node.testnet.cspr.cloud/rpc
+CASPER_RPC_URL=https://rpc.testnet.casper.network/rpc
 CASPER_NETWORK_NAME=casper-test
 CASPER_DEPLOY_CHAIN_NAME=casper-test
-CASPER_PRIVATE_KEY=replace_with_server_side_private_key_or_secret_mount
-CASPER_PUBLIC_KEY=01_replace_with_testnet_public_key
-CASPER_ACCOUNT_HASH=account-hash-replace-with-testnet-account
-X402_TREASURY_ACCOUNT=account-hash-replace-with-testnet-treasury
-```
 
-Post-deploy, also record:
+CASPER_PUBLIC_KEY=<wsl_deployer_public_key>
+CASPER_ACCOUNT_HASH=<wsl_deployer_account_hash>
+CASPER_PRIVATE_KEY_PATH=./keys/deployer/secret_key.pem
+CASPER_PRIVATE_KEY=
 
-```env
+X402_TREASURY_ACCOUNT=<wsl_deployer_account_hash>
+
+X402_MODE=mock
+X402_NETWORK=casper-test
+X402_QUERY_PRICE_CSPR=<demo_price>
+
+CSPR_CLOUD_MODE=mock
+CSPR_CLOUD_BASE_URL=https://api.testnet.cspr.cloud
+
 CREDIT_REGISTRY_DEPLOY_HASH=
 COMPLIANCE_REGISTRY_DEPLOY_HASH=
 ORACLE_PAYWALL_DEPLOY_HASH=
 REPUTATION_REGISTRY_DEPLOY_HASH=
+
 CREDIT_REGISTRY_HASH=
 COMPLIANCE_REGISTRY_HASH=
 ORACLE_PAYWALL_HASH=
 REPUTATION_REGISTRY_HASH=
 ```
 
-See [ENVIRONMENT.md](/d:/zeank/Desktop/Projects/aurum/docs/dev2/ENVIRONMENT.md) for the full matrix.
-
-If CSPR.cloud live-mode verification is needed later, also configure the optional testnet endpoints:
-
-```env
-CSPR_CLOUD_BASE_URL=https://api.testnet.cspr.cloud
-CSPR_CLOUD_STREAMING_URL=wss://streaming.testnet.cspr.cloud
-CSPR_NODE_RPC_URL=https://node.testnet.cspr.cloud
-CSPR_NODE_SSE_URL=https://node-sse.testnet.cspr.cloud
-```
-
-## Confirm Casper Testnet Funding
-
-Before deployment:
-
-1. Confirm the deploy account matches `CASPER_PUBLIC_KEY` and `CASPER_ACCOUNT_HASH`.
-2. Fund that account with testnet CSPR from the Casper faucet referenced in the root `README.md`.
-3. Record the faucet transaction or resulting balance evidence for the demo checklist.
-4. Do not proceed if the configured network or chain name does not look like testnet.
-
-## Current Repository-Safe Commands
-
-Check the environment first:
+Load `.env` in WSL:
 
 ```bash
-./scripts/check-dev2-env.sh --build
+set -a
+source .env
+set +a
+```
+
+## Fund The WSL Deployer
+
+1. Use the Casper testnet faucet to fund a Casper Wallet testnet account.
+2. Transfer testnet CSPR from Casper Wallet to the public key printed from `keys/deployer/public_key_hex`.
+3. Confirm the deployer account exists on testnet and record its `account-hash`.
+4. Put that value in `CASPER_ACCOUNT_HASH`.
+5. Use the same account hash for `X402_TREASURY_ACCOUNT` during the demo if no separate treasury exists.
+
+Do not use mainnet CSPR for this Dev 2 flow.
+
+## Build And Test
+
+```bash
 ./scripts/check-dev2-env.sh --deploy
-```
 
-Build all contracts:
-
-```bash
 cd contracts
 cargo build --workspace
-```
-
-Run all contract tests:
-
-```bash
-cd contracts
 cargo test --workspace
+cd ..
+
+python3 -m compileall api/casper api/cspr_cloud
 ```
 
-Run Python compile checks:
+## Deploy Contracts
 
-```bash
-python -m compileall api/casper api/cspr_cloud
-```
+Required tools:
 
-Run the deployment helper:
+- WSL Ubuntu
+- Rust/Cargo
+- `casper-client`
+- pinned Odra toolchain capable of producing Casper Wasm artifacts
+- funded Casper testnet deployer keypair
+
+When deployable Wasm artifacts exist:
 
 ```bash
 ./scripts/deploy-contracts.sh
 ```
 
-Run the verification helper:
+The script looks for each contract artifact under:
+
+```txt
+contracts/target/wasm32-unknown-unknown/release/<contract>.wasm
+contracts/target/wasm32-unknown-unknown/release/<contract-with-dashes>.wasm
+contracts/<contract>/target/wasm32-unknown-unknown/release/<contract>.wasm
+contracts/<contract>/target/wasm32-unknown-unknown/release/<contract-with-dashes>.wasm
+```
+
+It broadcasts with `casper-client put-deploy` using:
+
+- `CASPER_RPC_URL`
+- `CASPER_DEPLOY_CHAIN_NAME`
+- `CASPER_PRIVATE_KEY_PATH` preferred
+- `CASPER_PRIVATE_KEY` fallback only
+- `CASPER_DEPLOY_PAYMENT_AMOUNT` optional, default `300000000000`
+
+## Record Deploy Hashes
+
+After each successful submission, record:
+
+```env
+CREDIT_REGISTRY_DEPLOY_HASH=<deploy_hash>
+COMPLIANCE_REGISTRY_DEPLOY_HASH=<deploy_hash>
+ORACLE_PAYWALL_DEPLOY_HASH=<deploy_hash>
+REPUTATION_REGISTRY_DEPLOY_HASH=<deploy_hash>
+```
+
+Capture the deploy timestamp, deployer account, network, and deploy hash.
+
+## Verify Deploys
 
 ```bash
 ./scripts/verify-contracts.sh
 ```
 
-## Deployment Script Flow
+Also inspect each deploy hash in Casper testnet explorer or CSPR.cloud tooling and confirm success before extracting contract hashes.
 
-The deployment helper currently does the safe part of the process:
+## Record Contract Hashes
 
-1. validates the expected testnet-only environment
-2. checks that the contract workspace exists
-3. builds the Rust workspace
-4. prints the manual checklist for deploy hashes and contract hashes
-
-It does not yet run final Odra deploy commands because the exact CLI and package layout are not pinned in this repository.
-
-## Running the Deployment Scripts
-
-Recommended order:
-
-```bash
-./scripts/check-dev2-env.sh --deploy
-./scripts/deploy-contracts.sh
-./scripts/verify-contracts.sh
-```
-
-If the final Odra CLI becomes pinned later, add the actual deploy commands to `scripts/deploy-contracts.sh` and record the resulting deploy output in this runbook.
-
-## Recording Deploy Hashes
-
-After each successful testnet deploy command, record the transaction hash in local environment management and in the handoff notes if needed:
+After deploy confirmation, inspect the successful deploy effects in explorer, CSPR.cloud tooling, or Casper client state queries. Record the resulting contract hashes:
 
 ```env
-CREDIT_REGISTRY_DEPLOY_HASH=
-COMPLIANCE_REGISTRY_DEPLOY_HASH=
-ORACLE_PAYWALL_DEPLOY_HASH=
-REPUTATION_REGISTRY_DEPLOY_HASH=
+CREDIT_REGISTRY_HASH=<contract_hash>
+COMPLIANCE_REGISTRY_HASH=<contract_hash>
+ORACLE_PAYWALL_HASH=<contract_hash>
+REPUTATION_REGISTRY_HASH=<contract_hash>
 ```
 
-Capture:
-
-- deploy timestamp
-- deployer account
-- network name
-- transaction hash
-
-## Recording Contract Hashes
-
-After the deploy succeeds and contract/package hashes are visible in explorer or CSPR.cloud tooling, record:
-
-```env
-CREDIT_REGISTRY_HASH=
-COMPLIANCE_REGISTRY_HASH=
-ORACLE_PAYWALL_HASH=
-REPUTATION_REGISTRY_HASH=
-```
-
-These are the values Dev 1 and Dev 3 should consume from environment variables, not hardcoded source.
-
-## Verification Steps
-
-1. Confirm the deploy account has testnet CSPR.
-2. Confirm `CASPER_NETWORK_NAME` and `CASPER_DEPLOY_CHAIN_NAME` contain `test`.
-3. Run `cargo test --workspace`.
-4. Run `python -m compileall api/casper api/cspr_cloud`.
-5. Capture deploy transaction hashes and resulting contract hashes.
-6. Update local environment values.
-7. Check each deploy hash in Casper testnet explorer or CSPR.cloud tooling.
-8. Confirm the expected entrypoints are visible for each contract.
-9. Hand final hash values to Dev 1 and Dev 3 through the documented env variable names in [INTEGRATION_NOTES.md](/d:/zeank/Desktop/Projects/aurum/docs/dev2/INTEGRATION_NOTES.md).
-
-## Explorer Notes
-
-Use the appropriate Casper testnet explorer or CSPR.cloud testnet tooling to confirm:
-
-- deploy status
-- contract package hashes
-- entrypoint visibility
-- expected contract ownership/deployer account
-
-Expected entrypoint groups to confirm:
-
-- `CreditRegistry`: issue, update, revoke, query-oriented entrypoints once the Odra layer is finalized
-- `ComplianceRegistry`: issue, revoke, flag, compliance-read entrypoints once finalized
-- `OraclePaywall`: query and pricing entrypoints once finalized
-- `ReputationRegistry`: attest, slash, and read entrypoints once finalized
+These are the values Dev 1 and Dev 3 consume. Do not hardcode them in source.
 
 ## Handoff To Dev 1 And Dev 3
 
-After recording hashes:
+Share:
 
-1. Update local environment values for backend use.
-2. Share the final hash set using the sample JSON structure in [INTEGRATION_NOTES.md](/d:/zeank/Desktop/Projects/aurum/docs/dev2/INTEGRATION_NOTES.md).
-3. Tell Dev 1 and Dev 3 whether `X402_MODE` is `mock` or `live`.
-4. Tell Dev 1 and Dev 3 whether `CSPR_CLOUD_MODE` is `mock` or `live`.
-5. Remind the team that mainnet CSPR is not required for the MVP.
+- network: `casper-test`
+- all four deploy hashes
+- all four contract hashes
+- `X402_MODE` as `mock` or `live`
+- `CSPR_CLOUD_MODE` as `mock` or `live`
+- note that live x402 settlement is not complete unless it has actually been implemented and tested
 
-## Known Limitations
+Use [INTEGRATION_NOTES.md](/d:/zeank/Desktop/Projects/aurum/docs/dev2/INTEGRATION_NOTES.md) for the handoff JSON.
 
-- The exact `cargo-odra` deployment commands are intentionally not claimed here because the final Odra version is not pinned in the repository yet.
-- The current Rust contract crates model the contract logic, but the final Odra runtime wrappers still need to be completed.
-- Live x402 settlement verification is still a TODO.
-- Live CSPR.cloud route templates still need to be pinned in the environment.
-- This runbook cannot verify on-chain state automatically without real deployed hashes and a pinned deploy toolchain.
+## Safety Warnings
 
-## Production Readiness TODO Checklist
-
-- Pin the final Odra CLI/toolchain version and document the exact deploy command.
-- Add real deploy execution and post-deploy verification into the scripts.
-- Replace x402 mock verification with facilitator-backed settlement validation.
-- Replace configurable live CSPR.cloud path placeholders with tested route templates.
-- Add persistent storage for replay protection and deployment audit logs.
+- Do not commit `.env`.
+- Do not commit `keys/`.
+- Do not commit `*.pem`.
+- Do not print `secret_key.pem`.
+- Do not use mainnet CSPR for this Dev 2 flow.
+- Testnet CSPR is required for deploy testing.
+- `target/` is build output and should not be committed.
+- `Cargo.lock` and `Cargo.toml` are safe to commit.
+- Keep x402 and CSPR.cloud modes labeled accurately as `mock` or `live`.
