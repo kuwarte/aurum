@@ -60,6 +60,8 @@ def attestation_agent(state: PipelineState) -> PipelineState:
         "timestamp": datetime.utcnow().isoformat(),
     }
 
+    existing_record = get_assessment(state["wallet_address"])
+
     attestation_hash = save_attestation(attestation_payload)
 
     # Connect to deployed Casper contracts
@@ -97,8 +99,10 @@ def attestation_agent(state: PipelineState) -> PipelineState:
             submitter = load_submitter_from_env()
 
             # Check if credential already exists to decide issue vs update
-            existing_record = get_assessment(state["wallet_address"])
-            credit_entrypoint = "update_score" if existing_record else "issue_credit_score"
+            force_credit_issue = os.getenv("AURUM_FORCE_CREDIT_ISSUE", "").lower() in ("1", "true", "yes")
+            credit_entrypoint = "issue_credit_score" if force_credit_issue else (
+                "update_score" if existing_record else "issue_credit_score"
+            )
             print(f"[*] Using entrypoint: {credit_entrypoint} (existing={bool(existing_record)})")
 
             # Submit credit score deploy
@@ -125,27 +129,33 @@ def attestation_agent(state: PipelineState) -> PipelineState:
                 tx_hash = credit_result.get("deploy_hash", f"pending-{now_ts}")
                 print(f"[+] Credit score deployed ({credit_entrypoint}): {tx_hash}")
 
-            # Submit compliance token deploy
-            # Only issue if no existing record; compliance has no update entrypoint
-            compliance_entrypoint = "issue_compliance_token"
-            compliance_result = submitter.submit_contract_call(
-                contract_hash=contracts.hashes.compliance_registry,
-                entrypoint=compliance_entrypoint,
-                args={
-                    "caller": caller,
-                    "borrower": state["wallet_address"],
-                    "level": compliance_level_u8,
-                    "aml_flag": has_aml_flag,
-                    "issued_at": now_ts,
-                    "expiry_at": expiry_ts,
+            # Compliance has no update entrypoint; issuing twice reverts with User error: 103.
+            if existing_record:
+                compliance_result = {
+                    "success": True,
+                    "skipped": True,
+                    "reason": "compliance credential already existed before this assessment",
                 }
-            )
-
-            if compliance_result.get("success"):
-                print(f"[+] Compliance token deployed: {compliance_result.get('deploy_hash')}")
+                print("[*] Skipping compliance token issue; existing assessment found")
             else:
-                print(f"[!] Compliance deploy failed: {compliance_result.get('error')}")
-
+                compliance_result = submitter.submit_contract_call(
+                    contract_hash=contracts.hashes.compliance_registry,
+                    entrypoint="issue_compliance_token",
+                    args={
+                        "caller": caller,
+                        "borrower": state["wallet_address"],
+                        "level": compliance_level_u8,
+                        "aml_flag": has_aml_flag,
+                        "issued_at": now_ts,
+                        "expiry_at": expiry_ts,
+                    }
+                )
+            
+                if compliance_result.get("success"):
+                    print(f"[+] Compliance token deployed: {compliance_result.get('deploy_hash')}")
+                else:
+                    print(f"[!] Compliance deploy failed: {compliance_result.get('error')}")
+                
             return {
                 **state,
                 "attestation_hash": attestation_hash,

@@ -47,6 +47,11 @@ class PipelineState(TypedDict):
     attestation_hash: str
     tx_hash: str
     attestation_summary: str
+    credit_deploy_result: dict
+    compliance_deploy_result: dict
+    borrowing_limit_motes: int
+    compliance_level: str
+    deploy_mode: str
 
     # Monitoring Agent outputs
     credential_active: bool

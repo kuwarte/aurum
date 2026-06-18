@@ -46,7 +46,13 @@ try:
     print()
     print("[ ATTESTATION AGENT ]")
     print(f"  attestation_hash  : {str(result.get('attestation_hash',''))[:60]}...")
+    credit_result = result.get("credit_deploy_result", {})
+    compliance_result = result.get("compliance_deploy_result", {})
+
     print(f"  tx_hash           : {result.get('tx_hash')}")
+    print(f"  credit_hash       : {credit_result.get('deploy_hash')}")
+    print(f"  compliance_hash   : {compliance_result.get('deploy_hash')}")
+    print(f"  compliance_skipped: {compliance_result.get('skipped', False)}")
     print(f"  deploy_mode       : {result.get('deploy_mode')}")
     print(f"  summary           : {str(result.get('attestation_summary',''))[:80]}...")
 

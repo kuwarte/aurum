@@ -391,7 +391,9 @@ class DeploySubmitter:
         if isinstance(value, bool):
             return f"{key}:bool='{str(value).lower()}'"
         elif isinstance(value, int):
-            if key.endswith("_bps") or key.endswith("_at"):
+            if key.endswith("_bps"):
+                return f"{key}:u32='{value}'"
+            elif key.endswith("_at") or key.endswith("_motes") or key in {"now", "deadline", "timestamp"}:
                 return f"{key}:u64='{value}'"
             elif value >= 2**32:
                 return f"{key}:u64='{value}'"
