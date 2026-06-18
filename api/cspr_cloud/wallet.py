@@ -1,24 +1,15 @@
 """CSPR.cloud wallet data wrapper for Aurum Protocol.
 
-This module normalizes wallet-level activity for the Credit Agent and related
-Dev 3 scoring flows. It supports `mock` mode for hackathon demos and a guarded
-`live` mode that calls CSPR.cloud only when server-side configuration is
-present. The output shape is intentionally stable so the scoring pipeline can
-depend on it regardless of mode.
+Supports `mock` mode for demos and `live` mode that calls CSPR.cloud using the
+confirmed endpoint: GET /accounts/{account_identifier}/transfers
 
-Expected environment variables:
-- CSPR_CLOUD_KEY
-- CSPR_CLOUD_BASE_URL
-- CSPR_CLOUD_MODE
+Auth: raw API key in `authorization` header (no Bearer prefix).
 
-Security assumptions:
-- API keys remain server-side.
-- Mock output is labeled clearly so downstream consumers do not mistake it for
-  production-grade indexed data.
-
-TODO:
-- Replace the placeholder REST path with the final endpoint confirmed from
-  project-specific CSPR.cloud integration tests.
+Environment variables:
+- CSPR_CLOUD_KEY          — API key (required in live mode)
+- CSPR_CLOUD_BASE_URL     — defaults to https://api.testnet.cspr.cloud
+- CSPR_CLOUD_MODE         — "mock" (default) or "live"
+- CSPR_CLOUD_TIMEOUT_SECONDS — defaults to 20
 """
 
 from __future__ import annotations
@@ -45,29 +36,41 @@ class WalletDataService:
 
     def __init__(self, config: CsprCloudConfig) -> None:
         self.config = config
+
+        # Build auth headers: raw key, no Bearer prefix
+        headers: Dict[str, str] = {}
+        if config.api_key and config.api_key.strip():
+            headers["authorization"] = config.api_key.strip()
+
         self._http = httpx.Client(
             timeout=config.timeout_seconds,
-            headers={"Authorization": f"Bearer {config.api_key}"} if config.api_key else {},
+            headers=headers,
         )
+
+    def _validate_live_key(self) -> None:
+        """Raise RuntimeError if live mode but key is missing."""
+        if self.config.mode == "live" and not (self.config.api_key and self.config.api_key.strip()):
+            raise RuntimeError(
+                "CSPR_CLOUD_KEY must be set and non-empty for CSPR_CLOUD_MODE=live"
+            )
 
     def get_wallet_transaction_history(self, account_hash: str) -> Dict[str, Any]:
         """Return normalized transaction history for the given wallet."""
-
-        if self.config.mode == "mock":
+        if self.config.mode != "live":
             return self._mock_history(account_hash)
+        self._validate_live_key()
         return self._live_history(account_hash)
 
     def get_wallet_volume_summary(self, account_hash: str) -> Dict[str, Any]:
-        """Summarize inbound and outbound transfer flow for scoring."""
-
+        """Summarize inbound/outbound flow and counterparty diversity."""
         history = self.get_wallet_transaction_history(account_hash)
-        transfers = history["transactions"]
+        transfers = history.get("transactions", [])
         inbound = sum(tx["amount_cspr"] for tx in transfers if tx["direction"] == "in")
         outbound = sum(tx["amount_cspr"] for tx in transfers if tx["direction"] == "out")
-        counterparties = {tx["counterparty"] for tx in transfers}
+        counterparties = {tx["counterparty"] for tx in transfers if tx.get("counterparty")}
         return {
             "account_hash": account_hash,
-            "mode": history["mode"],
+            "mode": history.get("mode", self.config.mode),
             "transaction_count": len(transfers),
             "inbound_cspr": inbound,
             "outbound_cspr": outbound,
@@ -75,8 +78,6 @@ class WalletDataService:
         }
 
     def get_counterparty_diversity(self, account_hash: str) -> Dict[str, Any]:
-        """Return a dedicated diversity metric for fraud and reputation checks."""
-
         summary = self.get_wallet_volume_summary(account_hash)
         return {
             "account_hash": account_hash,
@@ -85,8 +86,7 @@ class WalletDataService:
         }
 
     def get_flow_summary(self, account_hash: str) -> Dict[str, Any]:
-        """Return wallet flow data in the format expected by Dev 3 agents."""
-
+        """Return wallet flow in the shape expected by the credit agent."""
         summary = self.get_wallet_volume_summary(account_hash)
         return {
             "account_hash": account_hash,
@@ -100,35 +100,56 @@ class WalletDataService:
             "counterparty_diversity": summary["counterparty_diversity"],
         }
 
-    def _live_history(self, account_hash: str) -> Dict[str, Any]:
-        """Fetch live wallet activity from a configurable CSPR.cloud route.
-
-        The route is left configurable because the repo does not yet pin a
-        single endpoint shape. This avoids encoding guessed paths as if they
-        were authoritative.
+    def get_liquidity_positions(self, account_hash: str) -> Dict[str, Any]:
         """
+        Liquidity positions — CSPR.cloud doesn't have a dedicated endpoint for
+        this yet, so we return an empty list in live mode (no guessing paths).
+        Mock mode returns demo data.
+        """
+        if self.config.mode != "live":
+            return {
+                "account_hash": account_hash,
+                "mode": "mock",
+                "positions": [
+                    {
+                        "protocol": "AurumSwap",
+                        "pool": "CSPR-USDC",
+                        "liquidity_usd": 2500.0,
+                        "status": "active",
+                    }
+                ],
+            }
+        # Live: no confirmed endpoint — return empty, defi score will be 0
+        return {"account_hash": account_hash, "mode": "live", "positions": []}
 
-        path_template = os.getenv("CSPR_CLOUD_WALLET_ACTIVITY_PATH")
-        if not path_template:
-            raise RuntimeError(
-                "CSPR_CLOUD_WALLET_ACTIVITY_PATH must be set for live wallet mode. "
-                "Use mock mode if the final CSPR.cloud route is not pinned yet."
-            )
-        route = path_template.format(account_hash=account_hash)
-        response = self._http.get(f"{self.config.base_url.rstrip('/')}/{route.lstrip('/')}")
+    def _live_history(self, account_hash: str) -> Dict[str, Any]:
+        """Fetch real transfer history from CSPR.cloud.
+
+        CSPR.cloud accepts both public key (01abc...) and bare account hash
+        (e1b7...) in the URL. Transfer records always use bare account hashes
+        in to_account_hash / initiator_account_hash fields. We normalize the
+        query identifier to bare hash form for direction comparison.
+        """
+        # Strip account-hash- prefix for URL and comparison
+        bare_hash = account_hash.lower().replace("account-hash-", "").strip()
+        url = f"{self.config.base_url.rstrip('/')}/accounts/{bare_hash}/transfers"
+        response = self._http.get(url)
         response.raise_for_status()
         payload = response.json()
-        transactions = payload.get("data", [])
+
+        raw_items = payload.get("data", []) or []
+        # Pass bare_hash for direction comparison since API returns bare hashes
+        transactions = [self._normalize_transaction(item, bare_hash) for item in raw_items]
+
         return {
             "account_hash": account_hash,
+            "bare_hash": bare_hash,
             "mode": "live",
-            "transactions": [self._normalize_transaction(item) for item in transactions],
-            "warning": "Live CSPR.cloud mode depends on the configured route template.",
+            "transactions": transactions,
         }
 
     def _mock_history(self, account_hash: str) -> Dict[str, Any]:
-        """Return demo-safe wallet data when live CSPR.cloud is unavailable."""
-
+        """Deterministic demo wallet data."""
         transactions: List[Dict[str, Any]] = [
             {
                 "tx_hash": "mock-tx-1",
@@ -151,27 +172,75 @@ class WalletDataService:
                 "direction": "in",
                 "counterparty": "account-hash-client-1",
             },
+            {
+                "tx_hash": "mock-tx-4",
+                "timestamp": "2026-06-09T00:00:00Z",
+                "amount_cspr": 15.0,
+                "direction": "out",
+                "counterparty": "account-hash-dex-2",
+            },
+            {
+                "tx_hash": "mock-tx-5",
+                "timestamp": "2026-06-10T00:00:00Z",
+                "amount_cspr": 200.0,
+                "direction": "in",
+                "counterparty": "account-hash-client-2",
+            },
         ]
         return {
             "account_hash": account_hash,
             "mode": "mock",
             "transactions": transactions,
-            "warning": "Mock/demo wallet history in use; replace with live CSPR.cloud data for production.",
         }
 
-    def _normalize_transaction(self, item: Dict[str, Any]) -> Dict[str, Any]:
+    def _normalize_transaction(self, item: Dict[str, Any], account_hash: str) -> Dict[str, Any]:
+        """
+        Normalize a raw CSPR.cloud transfer record.
+        - amount: motes -> CSPR (÷ 1_000_000_000)
+        - direction: derived from to_account_hash / initiator_account_hash
+
+        account_hash should be the BARE hash (no account-hash- prefix, lowercase)
+        because CSPR.cloud returns bare hashes in transfer records.
+        """
+        # Amount: motes to CSPR
+        raw_amount = item.get("amount")
+        try:
+            amount_cspr = float(raw_amount) / 1_000_000_000 if raw_amount is not None else 0.0
+        except (TypeError, ValueError):
+            amount_cspr = 0.0
+
+        def _bare(h: str) -> str:
+            return h.lower().replace("account-hash-", "").strip() if h else ""
+
+        to_bare = _bare(item.get("to_account_hash") or "")
+        from_bare = _bare(item.get("initiator_account_hash") or "")
+        query_bare = _bare(account_hash)
+
+        is_to = bool(to_bare) and to_bare == query_bare
+        is_from = bool(from_bare) and from_bare == query_bare
+
+        if is_to and is_from:
+            direction = "self"
+        elif is_to:
+            direction = "in"
+        elif is_from:
+            direction = "out"
+        else:
+            direction = "unknown"
+
+        counterparty = to_bare if direction == "out" else from_bare
+
         return {
-            "tx_hash": item.get("hash") or item.get("deploy_hash") or "unknown",
+            "tx_hash": item.get("deploy_hash") or item.get("hash") or "unknown",
             "timestamp": item.get("timestamp") or item.get("block_time") or "unknown",
-            "amount_cspr": float(item.get("amount") or item.get("amount_cspr") or 0),
-            "direction": item.get("direction") or "unknown",
-            "counterparty": item.get("counterparty") or item.get("from") or item.get("to") or "unknown",
+            "amount_cspr": amount_cspr,
+            "direction": direction,
+            "counterparty": counterparty or "unknown",
         }
 
 
 def load_wallet_service_from_env() -> WalletDataService:
     """Build the wallet service from environment configuration."""
-
     return WalletDataService(
         CsprCloudConfig(
             api_key=os.getenv("CSPR_CLOUD_KEY", ""),

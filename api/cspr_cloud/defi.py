@@ -1,18 +1,17 @@
 """CSPR.cloud DeFi and RWA data wrapper for Aurum Protocol.
 
-This module packages DeFi-like activity into stable normalized structures for
-Dev 3's risk, fraud, and reputation analysis. Like the wallet wrapper, it
-supports both mock/demo mode and a configurable live mode without hardcoding
-unverified endpoint paths.
+In live mode, DeFi-specific routes are not available on CSPR.cloud's public
+testnet API (no loan/repayment/yield/RWA endpoints confirmed). Live mode
+returns empty lists for these — scoring dimensions will be 0 or neutral until
+real endpoints are available.
 
-Expected environment variables:
+Auth: raw API key in `authorization` header (no Bearer prefix).
+
+Environment variables:
 - CSPR_CLOUD_KEY
 - CSPR_CLOUD_BASE_URL
 - CSPR_CLOUD_MODE
-
-TODO:
-- Confirm and pin the final CSPR.cloud routes used for pool, loan, repayment,
-  and RWA activity so live mode can move beyond configurable templates.
+- CSPR_CLOUD_TIMEOUT_SECONDS
 """
 
 from __future__ import annotations
@@ -39,90 +38,114 @@ class DeFiDataService:
 
     def __init__(self, config: CsprCloudDefiConfig) -> None:
         self.config = config
+
+        headers: Dict[str, str] = {}
+        if config.api_key and config.api_key.strip():
+            headers["authorization"] = config.api_key.strip()
+
         self._http = httpx.Client(
             timeout=config.timeout_seconds,
-            headers={"Authorization": f"Bearer {config.api_key}"} if config.api_key else {},
+            headers=headers,
         )
 
+    def _validate_live_key(self) -> None:
+        if self.config.mode == "live" and not (self.config.api_key and self.config.api_key.strip()):
+            raise RuntimeError(
+                "CSPR_CLOUD_KEY must be set and non-empty for CSPR_CLOUD_MODE=live"
+            )
+
     def get_liquidity_positions(self, account_hash: str) -> Dict[str, Any]:
-        if self.config.mode == "mock":
-            return self._mock_dataset(account_hash)
-        return self._live_dataset(account_hash, "CSPR_CLOUD_DEFI_POSITIONS_PATH")
+        if self.config.mode != "live":
+            return self._mock_positions(account_hash)
+        # No confirmed CSPR.cloud endpoint for DeFi positions
+        return {"account_hash": account_hash, "mode": "live", "positions": []}
 
     def get_loan_records(self, account_hash: str) -> Dict[str, Any]:
-        if self.config.mode == "mock":
-            dataset = self._mock_dataset(account_hash)
-            return {"account_hash": account_hash, "mode": "mock", "loans": dataset["loans"]}
-        payload = self._live_dataset(account_hash, "CSPR_CLOUD_LOANS_PATH")
-        return {"account_hash": account_hash, "mode": "live", "loans": payload.get("data", [])}
-
-    def get_repayment_events(self, account_hash: str) -> Dict[str, Any]:
-        if self.config.mode == "mock":
-            dataset = self._mock_dataset(account_hash)
+        if self.config.mode != "live":
             return {
                 "account_hash": account_hash,
                 "mode": "mock",
-                "repayment_events": dataset["repayment_events"],
+                "loans": self._mock_dataset(account_hash)["loans"],
             }
-        payload = self._live_dataset(account_hash, "CSPR_CLOUD_REPAYMENTS_PATH")
-        return {
-            "account_hash": account_hash,
-            "mode": "live",
-            "repayment_events": payload.get("data", []),
-        }
+        return {"account_hash": account_hash, "mode": "live", "loans": []}
+
+    def get_repayment_events(self, account_hash: str) -> Dict[str, Any]:
+        if self.config.mode != "live":
+            return {
+                "account_hash": account_hash,
+                "mode": "mock",
+                "repayment_events": self._mock_dataset(account_hash)["repayment_events"],
+            }
+        return {"account_hash": account_hash, "mode": "live", "repayment_events": []}
 
     def get_yield_events(self, account_hash: str) -> Dict[str, Any]:
-        if self.config.mode == "mock":
-            dataset = self._mock_dataset(account_hash)
-            return {"account_hash": account_hash, "mode": "mock", "yield_events": dataset["yield_events"]}
-        payload = self._live_dataset(account_hash, "CSPR_CLOUD_YIELD_PATH")
-        return {"account_hash": account_hash, "mode": "live", "yield_events": payload.get("data", [])}
+        if self.config.mode != "live":
+            return {
+                "account_hash": account_hash,
+                "mode": "mock",
+                "yield_events": self._mock_dataset(account_hash)["yield_events"],
+            }
+        return {"account_hash": account_hash, "mode": "live", "yield_events": []}
 
     def get_rwa_events(self, account_hash: str) -> Dict[str, Any]:
-        if self.config.mode == "mock":
-            dataset = self._mock_dataset(account_hash)
-            return {"account_hash": account_hash, "mode": "mock", "rwa_events": dataset["rwa_events"]}
-        payload = self._live_dataset(account_hash, "CSPR_CLOUD_RWA_PATH")
-        return {"account_hash": account_hash, "mode": "live", "rwa_events": payload.get("data", [])}
+        if self.config.mode != "live":
+            return {
+                "account_hash": account_hash,
+                "mode": "mock",
+                "rwa_events": self._mock_dataset(account_hash)["rwa_events"],
+            }
+        return {"account_hash": account_hash, "mode": "live", "rwa_events": []}
 
-    def _live_dataset(self, account_hash: str, env_name: str) -> Dict[str, Any]:
-        path_template = os.getenv(env_name)
-        if not path_template:
-            raise RuntimeError(
-                f"{env_name} must be set for live CSPR.cloud DeFi mode. "
-                "Use mock mode if the final route is not pinned yet."
-            )
-        route = path_template.format(account_hash=account_hash)
-        response = self._http.get(f"{self.config.base_url.rstrip('/')}/{route.lstrip('/')}")
-        response.raise_for_status()
-        return response.json()
-
-    def _mock_dataset(self, account_hash: str) -> Dict[str, Any]:
+    def _mock_positions(self, account_hash: str) -> Dict[str, Any]:
         return {
             "account_hash": account_hash,
             "mode": "mock",
             "positions": [
-                {"protocol": "AurumSwap", "pool": "CSPR-USDC", "liquidity_usd": 2500.0, "status": "active"}
+                {
+                    "protocol": "AurumSwap",
+                    "pool": "CSPR-USDC",
+                    "liquidity_usd": 2500.0,
+                    "status": "active",
+                }
             ],
+        }
+
+    def _mock_dataset(self, account_hash: str) -> Dict[str, Any]:
+        return {
             "loans": [
-                {"protocol": "AurumLend", "loan_id": "mock-loan-1", "principal_cspr": 150.0, "status": "repaid"}
+                {
+                    "protocol": "AurumLend",
+                    "loan_id": "mock-loan-1",
+                    "principal_cspr": 150.0,
+                    "status": "repaid",
+                }
             ],
             "repayment_events": [
-                {"loan_id": "mock-loan-1", "timestamp": "2026-05-28T00:00:00Z", "amount_cspr": 155.0}
+                {
+                    "loan_id": "mock-loan-1",
+                    "timestamp": "2026-05-28T00:00:00Z",
+                    "amount_cspr": 155.0,
+                }
             ],
             "yield_events": [
-                {"protocol": "AurumStake", "timestamp": "2026-06-03T00:00:00Z", "reward_cspr": 4.5}
+                {
+                    "protocol": "AurumStake",
+                    "timestamp": "2026-06-03T00:00:00Z",
+                    "reward_cspr": 4.5,
+                }
             ],
             "rwa_events": [
-                {"asset_id": "mock-invoice-1", "timestamp": "2026-06-07T00:00:00Z", "value_usd": 1200.0}
+                {
+                    "asset_id": "mock-invoice-1",
+                    "timestamp": "2026-06-07T00:00:00Z",
+                    "value_usd": 1200.0,
+                }
             ],
-            "warning": "Mock/demo DeFi dataset in use; replace with live CSPR.cloud routes for production.",
         }
 
 
 def load_defi_service_from_env() -> DeFiDataService:
     """Build the DeFi service from environment configuration."""
-
     return DeFiDataService(
         CsprCloudDefiConfig(
             api_key=os.getenv("CSPR_CLOUD_KEY", ""),

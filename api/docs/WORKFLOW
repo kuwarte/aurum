@@ -1,0 +1,567 @@
+﻿================================================================================
+  AURUM PROTOCOL - SYSTEM WORKFLOW & ARCHITECTURE
+  Autonomous AI Credit Bureau on Casper Network
+================================================================================
+
+================================================================================
+  WHAT IS AURUM?
+================================================================================
+
+  You submit a Casper wallet address.
+  Six AI agents analyze it.
+  A credit score (0-1000) is minted on-chain via Casper contracts.
+  Third parties pay CSPR to query that score via an x402 micropayment gate.
+
+  No usernames. No banks. Just on-chain behavior.
+
+  Deployment status (June 2026):
+    - 4 smart contracts live on casper-test
+    - API runs locally (localhost:8000), not yet publicly hosted
+    - Supabase + Groq are cloud services (not on Casper)
+
+
+================================================================================
+  END-TO-END FLOW
+================================================================================
+
+  Client (browser / cURL / protocol)
+        |
+        |  POST /assess  { "wallet_address": "01abc..." }
+        v
+  +---------------------------------------------------------------------+
+  |                    FastAPI  (main.py)                               |
+  |                   routers/assess.py                                 |
+  +----------------------------------+----------------------------------+
+                                     |  pipeline.invoke({ wallet_address })
+                                     v
+  +---------------------------------------------------------------------+
+  |              LangGraph Pipeline  (pipeline/graph.py)                |
+  |                                                                     |
+  |   +----------+    +----------+   +----------+                       |
+  |   |  CREDIT  |--> |   RISK   |-->|  FRAUD   |                       |
+  |   +----------+    +----------+   +----------+                       |
+  |         |                              |                            |
+  |         v  (via shared PipelineState)  v                            |
+  |   +-------------+   +------------+   +----------+                   |
+  |   | ATTESTATION |-->| MONITORING |-->| LENDING  |                   |
+  |   +-------------+   +------------+   +----------+                   |
+  +----------------------------------+----------------------------------+
+                                     |
+                                     |  final PipelineState
+                                     v
+                            Response to client
+                   { score, tier, shap, tx_hash, loan_offers }
+
+
+================================================================================
+  THE 6-AGENT PIPELINE  (sequential, shared state)
+================================================================================
+
+  State enters as:  { wallet_address: "01abc..." }
+  State exits  as:  all fields below populated
+
+
+  +---------------------------------------------------------------------+
+  |  [1] CREDIT AGENT   agents/credit_agent.py                          |
+  |                                                                     |
+  |  Fetches real on-chain wallet data from CSPR.cloud:                 |
+  |                                                                     |
+  |   cspr_cloud/wallet.py                                              |
+  |    |- GET /accounts/{id}/transfers  ->  tx history                  |
+  |    |- get_wallet_volume_summary()   ->  tx_count, counterparty_div  |
+  |    |- get_flow_summary()            ->  CSPR inbound / outbound     |
+  |    |- get_liquidity_positions()     ->  active DeFi positions       |
+  |                                                                     |
+  |   cspr_cloud/defi.py                                                |
+  |    |- get_loan_records()            ->  loan history                |
+  |    |- get_repayment_events()        ->  repayments made             |
+  |    |- get_yield_events()            ->  staking/yield (DAO proxy)   |
+  |    |- get_rwa_events()              ->  real-world asset activity   |
+  |                                                                     |
+  |  Computes 6 scoring dimensions (0-100 each):                        |
+  |                                                                     |
+  |   wallet_activity = floor(tx_count/2) + min(50, counterparty_div)   |
+  |   repayment       = floor(repaid/loans * 100)  [50 if no loans]     |
+  |   defi            = min(100, positions * 20)                        |
+  |   income          = floor(inbound / (inbound+outbound) * 100)       |
+  |   rwa             = min(100, rwa_events * 25)                       |
+  |   dao             = min(100, yield_events * 15)                     |
+  |                                                                     |
+  |  Feeds dimensions into XGBoost model  ->  credit_score (0-1000)     |
+  |  Runs SHAP explainability             ->  shap_breakdown            |
+  |                                                                     |
+  |  ERROR HANDLING: any CSPR.cloud failure -> all dimensions = 50      |
+  |  (pipeline never halts, score degrades gracefully)                  |
+  +---------------------------------------------------------------------+
+                               |
+                               v  + credit_score, sub_scores, shap_breakdown
+  +---------------------------------------------------------------------+
+  |  [2] RISK AGENT   agents/risk_agent.py                              |
+  |                                                                     |
+  |  XGBoost default probability prediction:                            |
+  |   default_prob_30d  ->  base probability                            |
+  |   default_prob_60d  ->  base x 1.5                                  |
+  |   default_prob_90d  ->  base x 2.0                                  |
+  |                                                                     |
+  |  Score -> Tier mapping:                                             |
+  |   750-1000  ->  A   (prime)                                         |
+  |   600-749   ->  B   (near-prime)                                    |
+  |   450-599   ->  C   (subprime)                                      |
+  |   0-449     ->  D   (high risk)                                     |
+  |                                                                     |
+  |  Groq LLM (Llama 3.3 70B) enriches with:                            |
+  |   early_warning_flags, narrative risk_analysis                      |
+  +---------------------------------------------------------------------+
+                               |
+                               v  + risk_tier, default_prob_*, early_warning_flags
+  +---------------------------------------------------------------------+
+  |  [3] FRAUD AGENT   agents/fraud_agent.py                            |
+  |                                                                     |
+  |  Groq LLM analyzes raw_wallet_data for:                             |
+  |   - wash trading patterns                                           |
+  |   - circular transaction loops                                      |
+  |   - sybil cluster indicators                                        |
+  |   - fresh wallet risk (age < 7 days)                                |
+  |   - low counterparty diversity                                      |
+  |                                                                     |
+  |  Outputs:  fraud_score (0-1),  fraud_flags[],  fraud_confidence     |
+  +---------------------------------------------------------------------+
+                               |
+                               v  + fraud_score, fraud_flags
+  +---------------------------------------------------------------------+
+  |  [4] ATTESTATION AGENT   agents/attestation_agent.py                |
+  |                                                                     |
+  |  Groq LLM generates human-readable attestation_summary              |
+  |                                                                     |
+  |  Supabase:  save_attestation()  ->  stores full assessment record   |
+  |              returns  attestation_hash  (Supabase record URL)       |
+  |                                                                     |
+  |  Casper (AURUM_DEPLOY_MODE=live):                                   |
+  |   submitter.submit_contract_call() via casper-client put-deploy     |
+  |   (bypasses contracts.py envelope layer, calls CLI directly)        |
+  |                                                                     |
+  |   CreditRegistry.issue_credit_score(caller, borrower, score, ...)   |
+  |   ComplianceRegistry.issue_compliance_token(caller, borrower, ...)  |
+  |                                                                     |
+  |  NOTE: all contract entrypoints take an explicit "caller" string    |
+  |  arg (deployer account-hash) as first argument.                     |
+  |                                                                     |
+  |  Outputs:  attestation_hash,  tx_hash,  deploy_mode                 |
+  +---------------------------------------------------------------------+
+                               |
+                               v  + attestation_hash, tx_hash
+  +---------------------------------------------------------------------+
+  |  [5] MONITORING AGENT   agents/monitoring_agent.py                  |
+  |                                                                     |
+  |  Groq LLM decides whether credential stays active:                  |
+  |   fraud_score > 0.5  ->  action = "revoke"                          |
+  |   otherwise          ->  action = "maintain"                        |
+  |                                                                     |
+  |  Outputs:  credential_active (bool),  monitoring_action             |
+  +---------------------------------------------------------------------+
+                               |
+                               v  + credential_active, monitoring_action
+  +---------------------------------------------------------------------+
+  |  [6] LENDING AGENT   agents/lending_agent.py                        |
+  |                                                                     |
+  |  Matches tier to lending pool offers:                               |
+  |   A  ->  TrueFi  8%   up to $50,000                                 |
+  |   B  ->  Maple   12%  up to $20,000                                 |
+  |   C  ->  Clearpool 18% up to $5,000                                 |
+  |   D  ->  no offers                                                  |
+  |                                                                     |
+  |  Groq LLM personalizes the lending_recommendation narrative         |
+  +---------------------------------------------------------------------+
+                               |
+                               v
+               Final response returned to client
+
+
+================================================================================
+  ORACLE QUERY  (x402-gated paid access)
+================================================================================
+
+  Any protocol can query a wallet's stored score without re-running the pipeline.
+  Requires a valid x402 payment proof — mock or live depending on X402_MODE.
+
+
+  Third-party protocol
+        |
+        |  GET /oracle/query?wallet=01abc...
+        |  Header:  X-402-Payment-Proof: { ...proof JSON... }
+        v
+  +------------------------------------------------------------+
+  |  routers/oracle.py                                         |
+  |                                                            |
+  |  1. Check X-402-Payment-Proof header present?              |
+  |        NO  ->  HTTP 402 + payment_requirement JSON         |
+  |                                                            |
+  |  2. Parse proof JSON                                       |
+  |        FAIL  ->  HTTP 402 + { error: invalid_proof_format} |
+  |                                                            |
+  |  3. X402Verifier.verify(proof)                             |
+  |        Structural checks (both modes):                     |
+  |          deadline not expired                              |
+  |          receiver == treasury account                      |
+  |          network matches                                   |
+  |          nonce not replayed (in-memory cache)              |
+  |          amount >= 1.5 CSPR                                |
+  |        Live mode additional check:                         |
+  |          verify_transfer_on_chain() scans last 20          |
+  |          blocks for matching CSPR transfer to treasury     |
+  |        FAIL  ->  HTTP 402 + error detail                   |
+  |                                                            |
+  |  4. Supabase: get_assessment(wallet)                       |
+  |        NOT FOUND  ->  HTTP 404                             |
+  |                                                            |
+  |  5. Return credit profile                                  |
+  |       { wallet_address, score, tier, shap_values,          |
+  |         loan_offers, assessed_at }                         |
+  +------------------------------------------------------------+
+
+  Payment proof structure (JSON in header):
+  {
+    "payer_account":            "account-hash-...",
+    "receiver_account":         "account-hash-e1b7...",   <- treasury
+    "amount_cspr":              "1.50",
+    "nonce":                    "uuid-or-random-string",
+    "deadline_epoch_seconds":   1750000000,
+    "network":                  "casper-test",
+    "signature":                "...",
+    "payment_reference":        "..."
+  }
+
+  X402_MODE=mock:  proof accepted on structure alone (no real CSPR needed)
+  X402_MODE=live:  proof PLUS on-chain transfer verification required
+                   payer must first send >= 1.5 CSPR to treasury account
+                   server scans get-block-transfers on last 20 blocks
+
+  NOTE: signature field is present in the proof schema but is NOT currently
+  validated cryptographically. On-chain transfer presence is the live guard.
+  Signature validation is a TODO before production.
+
+
+================================================================================
+  CRON MONITOR  (scheduled re-scoring)
+================================================================================
+
+  Called every 15 minutes (by Vercel cron or external scheduler).
+
+  POST /cron/monitor
+        |
+        v
+  Supabase: SELECT * FROM assessments WHERE credential_active = true
+        |
+        |  for each active wallet (sequential, rate-limit safe):
+        v
+  pipeline.invoke({ wallet_address })
+        |
+        |-- monitoring_action == "maintain"
+        |         -> skip, no changes
+        |
+        +-- monitoring_action == "revoke"
+                  |
+                  |-- AURUM_DEPLOY_MODE=live:
+                  |     submitter.submit_contract_call(
+                  |       CreditRegistry, "revoke_credit_score",
+                  |       { caller, borrower, revoked_at }
+                  |     )  <- real put-deploy to testnet
+                  |     on failure -> errored++, skip Supabase update
+                  |
+                  |-- AURUM_DEPLOY_MODE=mock:
+                  |     skip chain call, log only
+                  |
+                  +-- Supabase: UPDATE credential_active = false
+
+  Returns:
+  {
+    "status":               "ok",
+    "credentials_checked":  N,
+    "credentials_revoked":  N,
+    "credentials_errored":  N,
+    "deploy_mode":          "live" | "mock",
+    "timestamp":            "2026-06-18T..."
+  }
+
+
+================================================================================
+  API <-> CONTRACT RELATIONSHIPS
+================================================================================
+
+  4 Rust/Odra smart contracts deployed on Casper testnet.
+  Python layer calls them through casper/contracts.py + casper/deploy_submitter.py
+
+  All contract entrypoints take a "caller" string arg (deployer account-hash).
+  Write entrypoints: submitted as real put-deploy via casper-client CLI.
+  Read entrypoints:  submitted as getter deploys; return value parsed from
+                     execution effects (WriteCLValue in transforms).
+
+
+  casper/contracts.py  (AurumContracts)              Casper Testnet
+  -----------------------------------------------------------------------
+    |
+    |-- issue_credit_score(caller, borrower, ...) --> CreditRegistry
+    |   update_score(caller, borrower, ...)           env: CREDIT_REGISTRY_CONTRACT_HASH
+    |   revoke_credit_score(caller, borrower, ...)    (fallback: CREDIT_REGISTRY_HASH)
+    |   get_credit_score(borrower)                    |
+    |     [live: call_getter get_score + get_tier      entrypoints:
+    |            + is_credential_active_at]             issue_credit_score
+    |                                                   update_score
+    |                                                   revoke_credit_score
+    |                                                   get_score
+    |                                                   get_tier
+    |                                                   get_attestation_hash
+    |                                                   get_history_count
+    |                                                   is_credential_active_at
+    |
+    |-- issue_compliance_token(caller, borrower, ...) -> ComplianceRegistry
+    |   is_compliant(borrower, now)                    env: COMPLIANCE_REGISTRY_CONTRACT_HASH
+    |     [live: call_getter is_compliant]             (fallback: COMPLIANCE_REGISTRY_HASH)
+    |                                                   entrypoints:
+    |                                                   issue_compliance_token
+    |                                                   is_compliant
+    |
+    |-- query_credit_profile(borrower, proof) -------> OraclePaywall
+    |   bulk_query(borrowers, proofs)                  env: ORACLE_PAYWALL_CONTRACT_HASH
+    |     [live: call_getter query_credit_profile]     (fallback: ORACLE_PAYWALL_HASH)
+    |     [oracle router uses Supabase as primary      entrypoints:
+    |      cache; this is cross-validation]             query_credit_profile
+    |                                                   bulk_query
+    |
+    +-- attest_reputation(caller, borrower, ...) ----> ReputationRegistry
+        get_reputation(borrower)                       env: REPUTATION_REGISTRY_CONTRACT_HASH
+          [live: call_getter get_reputation]           (fallback: REPUTATION_REGISTRY_HASH)
+                                                        entrypoints:
+                                                        attest_reputation
+                                                        get_reputation
+
+
+  casper/deploy_submitter.py  (DeploySubmitter)
+   |- submit_contract_call()   -> casper-client put-deploy --session-hash <hex>
+   |- check_deploy_status()    -> casper-client get-transaction (fallback get-deploy)
+   |- call_getter()            -> submit_contract_call() + poll 60s + _extract_return_value()
+   |- _extract_return_value()  -> parse WriteCLValue from execution effects (reversed scan)
+   |- verify_transfer_on_chain() -> get-node-status + get-block-transfers (last 20 blocks)
+   |- loaded via load_submitter_from_env()
+   |    requires: CASPER_RPC_URL, CASPER_DEPLOY_CHAIN_NAME, CASPER_PRIVATE_KEY_PATH
+   +- CASPER_CLIENT_BIN overrides binary path (default: "casper-client")
+      example: /home/kuwarte/.cargo/bin/casper-client
+
+  casper/x402.py  (X402Verifier)
+   |- verify()  mock mode: structural checks only (deadline, receiver, nonce, amount)
+   |- verify()  live mode: structural checks + verify_transfer_on_chain()
+   |- nonce cache: in-memory Set (cleared on server restart — TODO: persist in Supabase)
+   +- loaded via load_x402_verifier_from_env()
+
+
+================================================================================
+  DATA FLOW MAP
+================================================================================
+
+                        +---------------+
+                        |  CSPR.cloud   |
+                        |  (testnet)    |
+                        +-------+-------+
+                                |  GET /accounts/{id}/transfers
+                                |  authorization: <api_key>   (no Bearer)
+                                v
+  +--------------+       +-----------------+       +----------------+
+  |  Client /    |       |   FastAPI +      |       |    Supabase    |
+  |  Protocol    |------>|   LangGraph      |------>|  assessments   |
+  |  (local      |       |   6 Agents       |       |  table         |
+  |   only now)  |       +--------+--------+       +----------------+
+  +--------------+                |
+                         +--------+--------+
+                         |   Groq API      |
+                         |  Llama 3.3 70B  |
+                         |  (Risk, Fraud,  |
+                         |   Lending,      |
+                         |   Monitoring,   |
+                         |   Attestation)  |
+                         +--------+--------+
+                                  |
+                                  v
+                    +------------------------+
+                    |   Casper Testnet RPC   |
+                    |  (live mode)           |
+                    |                        |
+                    |  CreditRegistry        |
+                    |  ComplianceRegistry    |
+                    |  OraclePaywall         |
+                    |  ReputationRegistry    |
+                    +------------------------+
+
+
+================================================================================
+  ENVIRONMENT MODES
+================================================================================
+
+  Three independent mode switches in api/.env:
+
+  CSPR_CLOUD_MODE      mock  ->  deterministic fake wallet data (safe for demos)
+                       live  ->  real on-chain data from CSPR.cloud API
+                               [currently: live]
+
+  AURUM_DEPLOY_MODE    mock  ->  builds contract call envelopes, no broadcast
+                       live  ->  signs and submits deploys via casper-client
+                                 put-deploy --session-hash (Odra v1 contracts)
+                               [currently: live]
+
+  X402_MODE            mock  ->  proof accepted on structure alone
+                       live  ->  structure check + on-chain transfer scan
+                               [currently: mock -- set to live for real payments]
+
+  Contract env vars (both required — CONTRACT_HASH preferred):
+    CREDIT_REGISTRY_CONTRACT_HASH      contract-393bd1...  (callable, preferred)
+    CREDIT_REGISTRY_HASH               hash-804fe9...      (package, fallback)
+    COMPLIANCE_REGISTRY_CONTRACT_HASH  contract-3d3a93...
+    COMPLIANCE_REGISTRY_HASH           hash-587d0c...
+    ORACLE_PAYWALL_CONTRACT_HASH       contract-427ba7...
+    ORACLE_PAYWALL_HASH                hash-a70e08...
+    REPUTATION_REGISTRY_CONTRACT_HASH  contract-5bca99...
+    REPUTATION_REGISTRY_HASH           hash-167690...
+
+
+================================================================================
+  API SURFACE  (all endpoints)
+================================================================================
+
+  POST  /assess                  run full 6-agent pipeline, mint score on-chain
+  GET   /oracle/query?wallet=    x402-gated: return stored credit profile
+  GET   /oracle/history?wallet=  return score history (no payment required)
+  GET   /oracle/payment-info     return x402 payment requirements
+  POST  /cron/monitor            re-score all active credentials, revoke on-chain
+  GET   /health                  system status, mode flags, contract check
+  GET   /config                  public config (contract hashes, network)
+  GET   /docs                    OpenAPI (Swagger UI)
+
+  /health returns:
+    status, mode (deploy:<mode>,cspr_cloud:<mode>), contracts_connected, rpc_url
+
+  /config returns:
+    deploy_mode, cspr_cloud_mode, network, contracts { credit_registry,
+    compliance_registry, oracle_paywall, reputation_registry }
+
+
+================================================================================
+  SCORING MODEL
+================================================================================
+
+  XGBoost trained on 6 features, each 0-100:
+
+  Feature            Source                           Weight (approx)
+  -----------------------------------------------------------------------
+  repayment          loan repayment ratio             highest
+  wallet_activity    tx count + counterparty spread   high
+  income             inbound / total CSPR flow        high
+  defi               active liquidity positions       medium
+  rwa                real-world asset events          medium
+  dao                yield events (governance proxy)  lower
+
+  Output:  raw score  ->  scaled to 0-1000
+  SHAP explains which features drove the score up or down.
+
+
+================================================================================
+  PIPELINE STATE  (pipeline/state.py  PipelineState TypedDict)
+================================================================================
+
+  Input
+    wallet_address       str
+
+  Credit Agent outputs
+    raw_wallet_data      dict
+    sub_scores           dict
+    credit_score         int
+    shap_breakdown       dict
+
+  Risk Agent outputs
+    risk_tier            str
+    default_prob_30d     float
+    default_prob_60d     float
+    default_prob_90d     float
+    early_warning_flags  list
+    risk_analysis        str
+
+  Fraud Agent outputs
+    fraud_score          float
+    fraud_flags          list
+    fraud_reasoning      str
+    fraud_confidence     float
+
+  Attestation Agent outputs
+    attestation_hash     str
+    tx_hash              str
+    attestation_summary  str
+    deploy_mode          str   ("live" | "mock" | "live_failed")
+
+  Monitoring Agent outputs
+    credential_active    bool
+    monitoring_reasoning str
+    monitoring_action    str
+
+  Lending Agent outputs
+    loan_offers          list
+    lending_recommendation str
+
+
+================================================================================
+  TESTING GUIDE
+================================================================================
+
+  Start the API:
+    cd api && .venv/bin/uvicorn main:app --reload
+
+  Score a real wallet (full e2e, mints on-chain):
+    curl -X POST http://localhost:8000/assess \
+      -H "Content-Type: application/json" \
+      -d '{"wallet_address": "e1b7c78127d7b8b652ec00dd074a74bd47b5a9eebe1fd94cec3bb3e2ce7d8dad"}'
+
+  Query oracle with mock payment (X402_MODE=mock):
+    curl "http://localhost:8000/oracle/query?wallet=<wallet>" \
+      -H 'X-402-Payment-Proof: {"payer_account":"account-hash-<payer>",
+          "receiver_account":"account-hash-e1b7c78127d7b8b652ec00dd074a74bd47b5a9eebe1fd94cec3bb3e2ce7d8dad",
+          "amount_cspr":"1.50","nonce":"unique-nonce-1",
+          "deadline_epoch_seconds":9999999999,"network":"casper-test",
+          "signature":"mock-signature","payment_reference":"mock:1"}'
+
+  Switch to live x402 payments:
+    1. Send >= 1.5 CSPR to treasury (account-hash-e1b7c7...) from any testnet wallet
+    2. Set X402_MODE=live in api/.env
+    3. Build proof JSON with your payer account-hash and a fresh nonce
+    4. Server scans last 20 blocks to confirm transfer
+
+  Run existing test scripts:
+    .venv/bin/python test_scripts/test_e2e.py           # full pipeline
+    .venv/bin/python test_scripts/test_deploy_live.py   # single contract call
+    .venv/bin/python test_scripts/test_contract_integration.py
+
+
+================================================================================
+  KNOWN LIMITATIONS / TODOS
+================================================================================
+
+  - DeFi dimensions (defi, dao, rwa) score 0 in live mode because CSPR.cloud
+    testnet has no confirmed loan/yield/RWA endpoints yet. Transfer history
+    (wallet_activity, income, repayment) works live today.
+
+  - x402 signature field in proof is not cryptographically validated.
+    On-chain transfer scan is the live payment guard.  Add EdDSA signature
+    verification before production.
+
+  - x402 nonce cache is in-memory -- server restart clears replay protection.
+    TODO: persist nonces in Supabase before production.
+
+  - call_getter() costs real CSPR gas (put-deploy) and takes ~60s to poll.
+    For high-frequency reads, cache results in Supabase or Redis.
+    The oracle router already uses Supabase as the primary low-latency cache.
+
+  - casper-client put-deploy is deprecated in v5; it still works for Odra v1
+    contracts (hash- addresses). Migration to put-transaction invocable-entity
+    requires upgrading contracts to Casper v2 entity model first.
+
+  - API is local only (localhost:8000). To make publicly accessible, deploy
+    to Render / Railway / VPS and update CORS origins in main.py.
+
+  - Agent keypairs all share the deployer key. Generate separate keys per
+    agent before mainnet (keys/ directory already has per-agent key files).
