@@ -1,91 +1,105 @@
 """
 Oracle Router: x402-Gated Query Interface.
 
-Provides authenticated access to credit profiles via x402 micropayment protocol.
-Any protocol pays CSPR to query wallet credit scores and risk assessments.
-
-Phase 2: Integrate with  2's casper/x402.py for payment verification.
+Requires a valid x402 payment proof in the X-402-Payment-Proof header.
+Returns HTTP 402 with payment requirements if missing or invalid.
 """
 
-from fastapi import APIRouter, Query, HTTPException
+import json
+import logging
+from fastapi import APIRouter, Query, HTTPException, Request
 from db.supabase import get_assessment
+from casper.x402 import (
+    X402Verifier,
+    X402PaymentProof,
+    X402VerificationError,
+    load_x402_verifier_from_env,
+)
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/oracle", tags=["oracle"])
+
+# Singleton verifier — loaded once at import time
+try:
+    _verifier: X402Verifier = load_x402_verifier_from_env()
+    logger.info("x402 verifier loaded (mode=%s)", _verifier.config.mode.value)
+except Exception as exc:
+    logger.error("Failed to load x402 verifier: %s", exc)
+    raise SystemExit(1) from exc
 
 
 @router.get("/query")
-async def query_credit_profile(wallet: str = Query(..., description="Wallet address to query")):
+async def query_credit_profile(
+    request: Request,
+    wallet: str = Query(..., description="Wallet address to query"),
+):
     """
-    Query a wallet's credit profile (x402-gated endpoint).
+    Query a wallet's credit profile (x402-gated).
 
-    Returns the most recent credit assessment for the given wallet.
-    Phase 2: Will verify x402 payment proof before returning data.
-
-    Args:
-        wallet: Wallet address to query (required)
-
-    Returns:
-        Dictionary with:
-          - wallet_address: The queried address
-          - credit_score: Final score 0-1000
-          - risk_tier: Risk classification A/B/C/D
-          - default_prob_30d/60d/90d: Default probabilities
-          - fraud_flags: List of detected fraud indicators
-          - credential_active: Whether credential is still valid
-          - created_at: Timestamp of assessment
-
-    Raises:
-        HTTPException 404: No assessment found for wallet
+    Requires X-402-Payment-Proof header with a JSON payment proof.
+    Returns HTTP 402 with payment requirements if missing or invalid.
     """
-    
-    # TODO: Verify x402 payment signature (Dev 2 integrates)
-    # from casper.x402 import verify_payment
-    # payment_verified = verify_payment(wallet, request.headers.get("X-402-Payment-Proof"))
-    # if not payment_verified:
-    #     raise HTTPException(status_code=402, detail="Payment Required")
-    
-    # Query Supabase for most recent assessment
+    payment_requirement = _verifier.build_payment_requirement()
+    proof_header = request.headers.get("X-402-Payment-Proof")
+
+    # --- No proof header ---
+    if not proof_header:
+        return HTTPException(status_code=402, detail=payment_requirement)
+
+    # --- Parse proof ---
+    try:
+        proof_dict = json.loads(proof_header)
+        proof = X402PaymentProof(
+            payer_account=proof_dict["payer_account"],
+            receiver_account=proof_dict["receiver_account"],
+            amount_cspr=str(proof_dict["amount_cspr"]),
+            nonce=proof_dict["nonce"],
+            deadline_epoch_seconds=int(proof_dict["deadline_epoch_seconds"]),
+            network=proof_dict["network"],
+            signature=proof_dict["signature"],
+            payment_reference=proof_dict.get("payment_reference", ""),
+        )
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=402,
+            content={"error": "invalid_proof_format", "payment_requirement": payment_requirement},
+        )
+
+    # --- Verify proof ---
+    try:
+        _verifier.verify(proof)
+    except X402VerificationError as exc:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=402,
+            content={"error": str(exc), "payment_requirement": payment_requirement},
+        )
+
+    # --- Query Supabase ---
     assessment = get_assessment(wallet)
-    
     if not assessment:
         raise HTTPException(
             status_code=404,
-            detail=f"No assessment found for wallet {wallet}. Call POST /assess first."
+            detail=f"No assessment found for wallet {wallet}. Call POST /assess first.",
         )
-    
+
     return {
         "wallet_address": assessment.get("wallet_address"),
-        "credit_score": assessment.get("credit_score"),
-        "risk_tier": assessment.get("risk_tier"),
-        "default_prob_30d": assessment.get("default_prob_30d"),
-        "default_prob_60d": assessment.get("default_prob_60d"),
-        "default_prob_90d": assessment.get("default_prob_90d"),
-        "fraud_flags": assessment.get("fraud_flags", []),
-        "credential_active": assessment.get("credential_active", True),
-        "created_at": assessment.get("created_at"),
+        "score": assessment.get("credit_score"),
+        "tier": assessment.get("risk_tier"),
+        "shap_values": assessment.get("shap_breakdown", {}),
+        "loan_offers": assessment.get("loan_offers", []),
+        "assessed_at": assessment.get("created_at"),
     }
 
 
 @router.get("/history")
 async def query_credit_history(wallet: str = Query(..., description="Wallet address")):
-    """
-    Query credit score history for a wallet.
-
-    Returns recent assessment records. Phase 2: Will support time-range queries
-    and paging for full historical lookups.
-
-    Args:
-        wallet: Wallet address to query
-
-    Returns:
-        Dictionary with wallet address and list of recent assessments
-    """
-    
+    """Query credit score history for a wallet (no payment gate for history)."""
     assessment = get_assessment(wallet)
-    
     if not assessment:
         return {"wallet_address": wallet, "history": []}
-    
     return {
         "wallet_address": wallet,
         "history": [
@@ -96,3 +110,9 @@ async def query_credit_history(wallet: str = Query(..., description="Wallet addr
             }
         ],
     }
+
+
+@router.get("/payment-info")
+async def payment_info():
+    """Return x402 payment requirements without making a request."""
+    return _verifier.build_payment_requirement()

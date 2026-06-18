@@ -1,53 +1,181 @@
 """
-Cron Router: Scheduled Monitoring Tasks.
+Cron Router: Scheduled Credential Monitoring.
 
-Scheduled background jobs triggered by Vercel cron every 15 minutes
-(configured in vercel.json). Checks all active credentials for defaults,
-fraud escalations, and missed repayments.
+POST /cron/monitor – re-scores all active credentials and revokes on-chain
+when the monitoring agent returns action="revoke".
 
-Phase 2: Integrate with Monitoring Agent and contract revocation.
+In live mode (AURUM_DEPLOY_MODE=live) revocation submits a real put-deploy to
+CreditRegistry.revoke_credit_score via DeploySubmitter.  In mock mode the
+Supabase flag is still updated but no chain call is made.
+
+Wallets are processed sequentially to avoid overwhelming CSPR.cloud rate limits.
 """
 
-from fastapi import APIRouter
+import logging
+import os
+import time
+from datetime import datetime, timezone
 
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+
+from db.supabase import get_client
+from pipeline.graph import pipeline
+from casper.deploy_submitter import load_submitter_from_env
+from casper.contracts import load_contracts_from_env
+
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cron", tags=["cron"])
+
+_DEPLOY_MODE = os.getenv("AURUM_DEPLOY_MODE", "mock")
+
+
+def _get_submitter():
+    """Return a DeploySubmitter in live mode, None in mock mode."""
+    if _DEPLOY_MODE == "live":
+        try:
+            return load_submitter_from_env()
+        except Exception as exc:
+            logger.error("Failed to load DeploySubmitter: %s", exc)
+    return None
+
+
+def _get_credit_registry_hash() -> str:
+    """Return the callable CreditRegistry contract hash from env."""
+    return (
+        os.getenv("CREDIT_REGISTRY_CONTRACT_HASH")
+        or os.getenv("CREDIT_REGISTRY_HASH", "")
+    )
+
+
+def _get_deployer_account() -> str:
+    """Return the deployer account hash (caller arg for contracts)."""
+    return os.getenv("CASPER_ACCOUNT_HASH", "")
 
 
 @router.post("/monitor")
 async def monitor_credentials():
     """
-    Execute scheduled credential monitoring task.
-
-    Called every 15 minutes by Vercel cron. Checks all active credentials for:
-      - Missed repayments
-      - Default events
-      - Fraud threshold breaches
-      - Revokes credentials if thresholds exceeded
-
-    Phase 2 Integration:
-      1. Query Supabase for all active credentials
-      2. For each wallet:
-         - Check CSPR.cloud for recent activity
-         - Run Monitoring Agent
-         - Call casper/contracts.py revoke if needed
-      3. Log revocation events
+    Re-score all active credentials and revoke those that breach thresholds.
 
     Returns:
-        Job status dictionary with results summary
+        credentials_checked  – number of wallets processed
+        credentials_revoked  – number of wallets revoked
+        credentials_errored  – number of wallets that hit errors
+        timestamp            – UTC ISO-8601 completion time
     """
-    
-    # TODO: Implement full monitoring loop
-    # 1. Query Supabase for all active credentials
-    # 2. For each wallet:
-    #    - Check CSPR.cloud for recent transaction activity
-    #    - Run Monitoring Agent to check status
-    #    - If credential_active = False, call casper/contracts.py revoke
-    # 3. Log revocation events with timestamps
+    checked = 0
+    revoked = 0
+    errored = 0
 
+    # 1. Fetch all active credentials from Supabase
+    try:
+        db = get_client()
+        response = (
+            db.table("assessments")
+            .select("wallet_address, id")
+            .eq("credential_active", True)
+            .execute()
+        )
+        active_records = response.data or []
+    except Exception as exc:
+        logger.error("Supabase query failed in monitor_credentials: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": str(exc),
+                "detail": "Failed to fetch active credentials from Supabase",
+            },
+        )
+
+    logger.info("monitor_credentials: found %d active credentials", len(active_records))
+
+    # Load submitter once — reused for all revocations
+    submitter = _get_submitter()
+    credit_registry_hash = _get_credit_registry_hash()
+    deployer_account = _get_deployer_account()
+
+    # 2. Re-score each wallet sequentially
+    for record in active_records:
+        wallet_address = record.get("wallet_address")
+        if not wallet_address:
+            continue
+
+        checked += 1
+        try:
+            result = pipeline.invoke({"wallet_address": wallet_address})
+            monitoring_action = result.get("monitoring_action", "maintain")
+
+            if monitoring_action != "revoke":
+                continue
+
+            revoked_at = int(time.time())
+
+            # 3. Revoke on-chain (live mode)
+            if submitter and credit_registry_hash:
+                try:
+                    chain_result = submitter.submit_contract_call(
+                        contract_hash=credit_registry_hash,
+                        entrypoint="revoke_credit_score",
+                        args={
+                            "caller": deployer_account,
+                            "borrower": wallet_address,
+                            "revoked_at": revoked_at,
+                        },
+                    )
+                    if chain_result.get("success"):
+                        logger.info(
+                            "On-chain revocation submitted for %s: deploy_hash=%s",
+                            wallet_address,
+                            chain_result.get("deploy_hash"),
+                        )
+                    else:
+                        logger.error(
+                            "On-chain revocation failed for %s: %s",
+                            wallet_address,
+                            chain_result.get("error"),
+                        )
+                        errored += 1
+                        continue
+                except Exception as chain_exc:
+                    logger.error(
+                        "On-chain revocation exception for %s: %s",
+                        wallet_address,
+                        chain_exc,
+                    )
+                    errored += 1
+                    continue
+            else:
+                # Mock mode — log but don't block Supabase update
+                logger.info(
+                    "mock mode: skipping on-chain revocation for %s", wallet_address
+                )
+
+            # 4. Update Supabase
+            try:
+                db.table("assessments").update(
+                    {"credential_active": False}
+                ).eq("wallet_address", wallet_address).execute()
+                revoked += 1
+                logger.info("Credential revoked in Supabase for wallet %s", wallet_address)
+            except Exception as db_exc:
+                logger.error(
+                    "Supabase update failed after revocation for %s: %s",
+                    wallet_address,
+                    db_exc,
+                )
+                errored += 1
+
+        except Exception as exc:
+            logger.error("Pipeline error for wallet %s: %s", wallet_address, exc)
+            errored += 1
+
+    timestamp = datetime.now(timezone.utc).isoformat()
     return {
         "status": "ok",
-        "message": "Scheduled monitoring task executed",
-        "timestamp": None,  # TODO: Add current UTC timestamp
-        "credentials_checked": 0,  # TODO: Count processed wallets
-        "credentials_revoked": 0,  # TODO: Count revoked credentials
+        "credentials_checked": checked,
+        "credentials_revoked": revoked,
+        "credentials_errored": errored,
+        "deploy_mode": _DEPLOY_MODE,
+        "timestamp": timestamp,
     }
