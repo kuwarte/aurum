@@ -1,0 +1,194 @@
+================================================================================
+  AURUM PROTOCOL - TODO LIST
+  High priority to low priority
+  Updated: June 2026
+================================================================================
+
+
+================================================================================
+  PRIORITY 1 — CRITICAL / BLOCKING 
+================================================================================
+
+[ ] RUN END-TO-END TEST WITH LIVE MODES
+    Confirm POST /assess completes with CSPR_CLOUD_MODE=live + AURUM_DEPLOY_MODE=live
+    against a real testnet wallet and a tx_hash is returned.
+    File: api/test_scripts/test_e2e.py
+    Check: tx_hash is a real 64-char hex, not "mock-deploy-..."
+
+[ ] FIX issue_credit_score DUPLICATE DEPLOY PROTECTION
+    The CreditRegistry contract rejects issue_credit_score if a credential
+    already exists for the borrower (CredentialAlreadyExists error).
+    Attestation agent needs to check Supabase first and call update_score
+    instead of issue_credit_score when a record already exists.
+    File: api/agents/attestation_agent.py
+
+[ ] VERIFY caller ARG IN ATTESTATION AGENT DEPLOY
+    The deployed Odra contract entrypoints take a "caller" string as the
+    first argument. The attestation agent calls submitter.submit_contract_call()
+    directly and must include "caller": CASPER_ACCOUNT_HASH in its args dict.
+    Confirm this is present — if missing, every live deploy will fail silently.
+    File: api/agents/attestation_agent.py
+
+[ ] BUILD FRONTEND (web/)
+    web/ is a default Next.js skeleton. Nothing is connected to the API.
+    Minimum viable UI:
+      - Wallet address input field
+      - POST /assess button -> display score, tier, tx_hash
+      - GET /oracle/query section with payment proof input
+    File: web/app/page.tsx
+
+
+================================================================================
+  PRIORITY 2 — HIGH  
+================================================================================
+
+[ ] DEFI SCORING DIMENSIONS — LIVE DATA
+    defi, rwa, dao, repayment dimensions always score 0 in live mode because
+    CSPR.cloud testnet has no DeFi endpoints confirmed yet.
+    When endpoints become available, wire them into cspr_cloud/defi.py.
+    File: api/cspr_cloud/defi.py
+    Current fallback: empty lists -> score 0 for all four dimensions
+
+[ ] X402 SIGNATURE VALIDATION
+    The payment proof includes a "signature" field that is never validated.
+    In live mode the on-chain transfer scan is the only guard.
+    For production: verify the payer signed the proof with their Ed25519 key.
+    File: api/casper/x402.py  ->  X402Verifier.verify()
+
+[ ] X402 NONCE PERSISTENCE
+    Nonces are stored in a Python in-memory set(). Server restart clears
+    replay protection entirely. A replayed proof within the same nonce window
+    will be accepted after restart.
+    Fix: persist consumed nonces in Supabase with a TTL.
+    File: api/casper/x402.py  ->  X402Verifier._used_nonces
+
+[ ] SWITCH X402_MODE TO LIVE
+    X402_MODE=mock is currently set in api/.env.
+    Change to live once a real CSPR payment test passes.
+    File: api/.env
+
+[ ] DEPLOY API TO PUBLIC HOST
+    API is only accessible at localhost:8000.
+    Deploy to Render / Railway / VPS.
+    Update CORS origins in api/main.py to match the deployed domain.
+    File: api/main.py  ->  origins list
+
+
+================================================================================
+  PRIORITY 3 — MEDIUM  
+================================================================================
+
+[ ] HANDLE call_getter() GAS COST AND LATENCY
+    call_getter() submits a real put-deploy and polls up to 60 seconds.
+    For high-read endpoints (oracle history, compliance checks), this is too slow.
+    Options:
+      a. Cache chain reads in Supabase with a TTL (preferred)
+      b. Add a read-only RPC method if Casper SDK exposes one
+    Files: api/casper/deploy_submitter.py, api/routers/oracle.py
+
+[ ] ADD /assess REQUEST VALIDATION
+    POST /assess currently accepts any dict. Add:
+      - wallet_address required and non-empty
+      - format validation (hex string, length check)
+      - rate limiting per IP
+    File: api/routers/assess.py
+
+[ ] ADD CRON MONITOR AUTHENTICATION
+    POST /cron/monitor is publicly accessible with no auth.
+    Add a secret header check (CRON_SECRET env var) before processing.
+    File: api/routers/cron.py
+
+[ ] FIX get_cspr_balance() STUB IN client.py
+    CasperClient.get_cspr_balance() returns a TODO dict.
+    Not currently used in production paths but should be wired to
+    query-balance via casper-client CLI.
+    File: api/casper/client.py
+
+[ ] STALE AGENTS/docs/AGENT_PIPELINE LOCATION
+    The AGENT_PIPELINE doc is at api/agents/docs/AGENT_PIPELINE.
+    The WORKFLOW and TODO docs are at api/docs/.
+    Consolidate all docs under api/docs/ for consistency.
+
+
+================================================================================
+  PRIORITY 4 — LOW: Production
+================================================================================
+
+[ ] PER-AGENT KEY ENFORCEMENT
+    All contract calls currently use the deployer key (CASPER_ACCOUNT_HASH).
+    Keys are generated (keys/ directory exists) but contracts only accept
+    calls from the deployer account. Requires a contract upgrade on mainnet
+    to assign per-agent roles via assign_role().
+    Files: api/agents/attestation_agent.py, contracts/credit_registry/src/lib.rs
+
+[ ] SEPARATE KEYS PER AGENT FOR LLM CALLS
+    All Groq calls currently share 2 keys. For production rate limits,
+    generate one key per agent.
+
+[ ] IPFS ATTESTATION STORAGE
+    attestation_hash is currently a Supabase URL.
+    For true decentralization, pin the attestation JSON to IPFS and store
+    the IPFS CID as the on-chain attestation_hash.
+    File: api/agents/attestation_agent.py, api/db/supabase.py
+
+[ ] REAL DEFI PROTOCOL INTEGRATIONS
+    Lending pool offers (TrueFi, Maple, Clearpool) are hardcoded.
+    Integrate real rate feeds and pool availability APIs.
+    File: api/agents/lending_agent.py
+
+[ ] DAO SCORING — REAL GOVERNANCE DATA
+    dao dimension uses yield events as a proxy.
+    Real DAO vote data requires a governance indexer not yet available
+    on CSPR.cloud. Track when this endpoint ships.
+    File: api/cspr_cloud/defi.py  ->  get_yield_events()
+
+[ ] CASPER V2 CONTRACT MIGRATION
+    Contracts are Odra v1 (hash- prefix, put-deploy path).
+    Casper v5 client deprecated put-deploy in favor of put-transaction
+    with invocable-entity for v2 entity addresses.
+    When upgrading contracts to Casper v2, update deploy_submitter.py.
+    File: api/casper/deploy_submitter.py  ->  submit_contract_call()
+
+[ ] ADD ASYNC PIPELINE EXECUTION
+    pipeline.invoke() is synchronous and blocks the FastAPI event loop.
+    Wrap in asyncio.run_in_executor() or move to a background task queue
+    (Celery / ARQ) and return a job_id with a polling endpoint.
+    File: api/routers/assess.py
+
+[ ] MONITORING AGENT — PROACTIVE ALERTS
+    Currently monitoring only runs during POST /cron/monitor re-scoring.
+    Add a notification path: when monitoring_action="revoke", send an
+    alert (email / webhook) to the wallet owner or admin.
+    File: api/agents/monitoring_agent.py, api/routers/cron.py
+
+[ ] ORACLE QUERY — SCORE HISTORY ENDPOINT
+    GET /oracle/history returns only one record (most recent).
+    Supabase query should return all records ordered by created_at desc.
+    File: api/routers/oracle.py  ->  query_credit_history()
+
+[ ] SCORING MODEL — RETRAIN ON REAL DATA
+    XGBoost model is trained on synthetic wallet profiles.
+    Once real CSPR.cloud DeFi data is available, retrain and evaluate.
+    File: api/scoring/model.py, api/scoring/train.py (if it exists)
+
+
+================================================================================
+  DONE (recently completed — for reference)
+================================================================================
+
+[x] Deploy 4 smart contracts to casper-test
+[x] Wire CSPR.cloud live wallet data (wallet_activity, income)
+[x] issue_credit_score on-chain deploy from attestation agent (live mode)
+[x] issue_compliance_token on-chain deploy from attestation agent (live mode)
+[x] revoke_credit_score on-chain deploy from cron monitor (live mode)
+[x] Wire contracts.py read methods to call_getter() (get_credit_score, is_compliant, etc.)
+[x] x402 live mode: on-chain transfer scan via verify_transfer_on_chain()
+[x] Fix cron.py revocation to use DeploySubmitter directly (not envelope dict)
+[x] Add caller arg to all contract write method args
+[x] Update api/.env.example with all real variable names
+[x] Reorganize scripts/ into deploy/, contracts/, dev/, test/ subdirectories
+
+
+================================================================================
+  END OF TODO
+================================================================================

@@ -1,0 +1,463 @@
+================================================================================
+  AURUM PROTOCOL - AGENT PIPELINE DOCUMENTATION
+  Last updated: June 2026
+================================================================================
+
+OVERVIEW
+--------
+Aurum is an autonomous AI credit bureau built on Casper Network. Six specialized
+AI agents, orchestrated by LangGraph, generate verifiable on-chain credit profiles
+for wallets. All agents use Groq-powered Llama 3.3 70B (temperature=0) with
+rule-based fallback if the LLM call fails.
+
+Current status: all 6 agents are live and operational. Smart contracts are
+deployed on casper-test. CSPR.cloud wallet data is live. DeFi data (loans,
+repayments, yield, RWA) falls back to empty lists because CSPR.cloud testnet
+does not yet expose those endpoints.
+
+
+================================================================================
+  AGENT 1: CREDIT AGENT   (agents/credit_agent.py)
+================================================================================
+
+PURPOSE
+-------
+Generates credit scores (0-1000) using an XGBoost model with SHAP explainability.
+This is the only fully deterministic agent — no LLM involved — so scores are
+reproducible and auditable.
+
+DATA SOURCES  (respects CSPR_CLOUD_MODE=live|mock)
+------------
+  cspr_cloud/wallet.py — WalletDataService
+    get_wallet_volume_summary()  ->  tx_count, counterparty_diversity
+    get_flow_summary()           ->  CSPR inbound / outbound breakdown
+    get_liquidity_positions()    ->  active DeFi positions
+
+  cspr_cloud/defi.py — DeFiDataService
+    get_loan_records()           ->  loan history
+    get_repayment_events()       ->  repayments made
+    get_yield_events()           ->  yield/staking events (DAO proxy)
+    get_rwa_events()             ->  real-world asset events
+
+  Any service call failure is caught per-section; the failed dimension falls
+  back to neutral 50 and the pipeline continues without halting.
+
+SCORING DIMENSIONS  (each 0-100)
+-----------------
+  wallet_activity  = floor(tx_count / 2) + min(50, counterparty_diversity)
+  repayment        = floor(repaid_count / max(loan_count, 1) * 100)  [50 if no loans]
+  defi             = min(100, position_count * 20)
+  income           = floor(inbound / max(inbound + outbound, 1) * 100)
+  rwa              = min(100, rwa_event_count * 25)
+  dao              = min(100, yield_event_count * 15)  [proxy for governance]
+
+  -> XGBoost model.predict(features)  ->  credit_score (0-1000)
+  -> SHAP explain_score(features)     ->  shap_breakdown
+
+OUTPUTS
+-------
+  credit_score      int        0-1000
+  sub_scores        dict       6 dimension scores
+  shap_breakdown    dict       SHAP feature contribution per dimension
+  raw_wallet_data   dict       all fetched service data (for downstream agents)
+
+KNOWN LIMITATIONS
+-----------------
+  - defi, rwa, dao dimensions always score 0 in live mode because CSPR.cloud
+    testnet has no confirmed loan/yield/RWA endpoints. wallet_activity,
+    income, and repayment work live today.
+  - wallet_age_days is not fetched directly; fraud agent uses a default of 180.
+
+
+================================================================================
+  AGENT 2: RISK AGENT   (agents/risk_agent.py)
+================================================================================
+
+PURPOSE
+-------
+Calculates default probabilities over 30/60/90-day horizons, assigns a risk tier,
+and uses Groq LLM to identify early warning patterns beyond fixed thresholds.
+
+WORKFLOW
+--------
+  1. Re-feed sub_scores into XGBoost model.predict_proba() -> base default prob
+  2. Scale horizons:  60d = base * 1.5,  90d = base * 2.0  (capped at 0.99)
+  3. Assign tier from credit_score:
+       >= 750  ->  A (prime)
+       >= 600  ->  B (near-prime)
+       >= 450  ->  C (subprime)
+       <  450  ->  D (high risk)
+  4. Apply rule-based flags:
+       repayment < 50          -> low_repayment_history
+       default_prob_30d > 0.15 -> elevated_default_risk
+       income < 40             -> inconsistent_income
+       wallet_activity < 30    -> dormant_wallet
+  5. Invoke Groq LLM (GROQ_API_KEY) with risk_analysis prompt
+  6. Merge AI early_warnings with rule-based flags (deduped)
+  7. Return tier, probs, merged warnings, and AI reasoning
+
+  LLM FALLBACK: if LLM fails, returns rule-based flags only with
+  risk_analysis = "Rule-based analysis only"
+
+OUTPUTS
+-------
+  risk_tier             str    A / B / C / D
+  default_prob_30d      float  rounded to 3 decimal places
+  default_prob_60d      float
+  default_prob_90d      float
+  early_warning_flags   list   merged rule + AI flags
+  risk_analysis         str    AI narrative or fallback label
+
+GROQ KEY
+--------
+  Uses GROQ_API_KEY (shared instance via AgentLLM)
+
+
+================================================================================
+  AGENT 3: FRAUD AGENT   (agents/fraud_agent.py)
+================================================================================
+
+PURPOSE
+-------
+AI-powered fraud detection. Analyzes raw_wallet_data for wash trading, sybil
+indicators, circular transactions, and fresh-wallet risk.
+
+WORKFLOW
+--------
+  1. Extract wallet_age_days from raw_wallet_data (default 180 if missing)
+  2. Build fraud_detection prompt with wallet profile from raw_wallet_data
+  3. Invoke Groq LLM (GROQ_API_KEY)
+  4. Parse JSON: { fraud_score, fraud_flags, reasoning, confidence }
+
+  LLM FALLBACK (rule-based):
+    wallet_age_days < 7         -> fresh_wallet_sybil_risk  (+0.2)
+    daily_avg_tx > 5            -> high_transaction_frequency  (+0.1)
+    counterparty_diversity < 3  -> low_counterparty_diversity  (+0.15)
+    fraud_score = sum of above, capped at 1.0
+    fraud_confidence = 0.7 (conservative)
+
+OUTPUTS
+-------
+  fraud_score       float  0.0 - 1.0
+  fraud_flags       list   detected pattern labels
+  fraud_reasoning   str    AI explanation or fallback label
+  fraud_confidence  float  0.0 - 1.0
+
+GROQ KEY
+--------
+  Uses GROQ_API_KEY
+
+
+================================================================================
+  AGENT 4: ATTESTATION AGENT   (agents/attestation_agent.py)
+================================================================================
+
+PURPOSE
+-------
+Aggregates all agent outputs into a signed attestation, saves to Supabase, and
+submits real on-chain deploys (issue_credit_score + issue_compliance_token) to
+Casper testnet when AURUM_DEPLOY_MODE=live.
+
+WORKFLOW
+--------
+  1. Invoke Groq LLM (GROQ_API_KEY_1) with attestation_summary prompt
+  2. Build attestation_payload with all assessment data + timestamp
+  3. db.save_attestation(payload) -> attestation_hash (Supabase URL)
+  4. Compute:
+       default_prob_bps  = int(default_prob_30d * 10000)
+       borrowing_limit   = tier_limits[risk_tier]  (A=100T, B=50T, C=10T, D=1T motes)
+       has_aml_flag      = "aml" in fraud_flags
+       compliance_level  = "restricted" if aml else "basic"
+
+  5a. AURUM_DEPLOY_MODE=live:
+       submitter.submit_contract_call(
+           CreditRegistry, "issue_credit_score",
+           { caller, borrower, score, tier, default_probability_bps,
+             borrowing_limit_motes, attestation_hash, issued_at, expiry_at }
+       )
+       submitter.submit_contract_call(
+           ComplianceRegistry, "issue_compliance_token",
+           { caller, borrower, level, aml_flag, issued_at, expiry_at }
+       )
+       tx_hash = deploy_hash from credit deploy result
+       deploy_mode = "live"  (or "live_failed" on exception)
+
+  5b. AURUM_DEPLOY_MODE=mock:
+       builds contract call envelope dicts via contracts.py
+       tx_hash = "mock-deploy-{wallet[:16]}-{timestamp}"
+       deploy_mode = "mock"
+
+  NOTE: attestation agent calls submitter.submit_contract_call() directly,
+  bypassing the contracts.py envelope layer, for the live write path.
+
+OUTPUTS
+-------
+  attestation_hash          str   Supabase record URL
+  tx_hash                   str   deploy hash (live) or mock string
+  attestation_summary       str   AI-generated professional summary
+  deploy_mode               str   "live" | "mock" | "live_failed"
+  credit_deploy_result      dict  (live only) full submit result
+  compliance_deploy_result  dict  (live only) full submit result
+  borrowing_limit_motes     int
+  compliance_level          str   "basic" | "restricted"
+
+GROQ KEY
+--------
+  Uses GROQ_API_KEY_1
+
+
+================================================================================
+  AGENT 5: MONITORING AGENT   (agents/monitoring_agent.py)
+================================================================================
+
+PURPOSE
+-------
+Decides whether the freshly-issued credential should be active or revoked.
+Reads the most recent previous assessment from Supabase for context.
+
+WORKFLOW
+--------
+  1. get_assessment(wallet_address) from Supabase (previous record if any)
+  2. Build credential_monitoring prompt with current score/tier/fraud/default
+  3. Invoke Groq LLM (GROQ_API_KEY)
+  4. Parse JSON: { credential_active, reasoning, action }
+
+  LLM FALLBACK:
+    default: credential_active=True, action="maintain"
+    if fraud_score > 0.5: credential_active=False, action="revoke"
+
+  NOTE: This agent only sets the monitoring_action flag. Actual on-chain
+  revocation is handled by routers/cron.py (POST /cron/monitor), which calls
+  submitter.submit_contract_call(CreditRegistry, "revoke_credit_score", ...)
+  in live mode.
+
+OUTPUTS
+-------
+  credential_active     bool   True = keep, False = revoke
+  monitoring_reasoning  str    AI explanation or fallback label
+  monitoring_action     str    "maintain" | "monitor" | "revoke"
+
+GROQ KEY
+--------
+  Uses GROQ_API_KEY
+
+
+================================================================================
+  AGENT 6: LENDING AGENT   (agents/lending_agent.py)
+================================================================================
+
+PURPOSE
+-------
+Matches the borrower's risk tier to available lending pool offers and uses
+Groq LLM to generate a personalized loan recommendation.
+
+POOL OFFERS  (hardcoded, mock protocol data)
+-----------
+  Tier A  ->  TrueFi    8%   up to $50,000
+  Tier B  ->  Maple     12%  up to $20,000
+  Tier C  ->  Clearpool 18%  up to $5,000
+  Tier D  ->  no offers
+
+WORKFLOW
+--------
+  1. Look up offers for risk_tier
+  2. If tier D: return early with empty loan_offers
+  3. Build lending_recommendation prompt
+  4. Invoke Groq LLM (GROQ_API_KEY_1)
+  5. Parse recommendation string
+
+  LLM FALLBACK: "Tier {tier} offers available at market rates."
+
+OUTPUTS
+-------
+  loan_offers             list  available pool offers for tier
+  lending_recommendation  str   AI-personalized advice or fallback
+
+GROQ KEY
+--------
+  Uses GROQ_API_KEY_1
+
+KNOWN LIMITATIONS
+-----------------
+  Pool rates and limits are hardcoded. No live protocol integration.
+  TrueFi, Maple, and Clearpool are illustrative — not real API connections.
+
+
+================================================================================
+  PIPELINE ORCHESTRATION   (pipeline/graph.py)
+================================================================================
+
+EXECUTION FLOW
+--------------
+  Credit -> Risk -> Fraud -> Attestation -> Monitoring -> Lending -> END
+
+  Linear, no conditional branching. Each agent receives the full PipelineState
+  TypedDict and returns an updated copy. State accumulates all outputs.
+
+LANGGRAPH STRUCTURE
+-------------------
+  StateGraph(PipelineState)
+  set_entry_point("credit")
+  add_edge: credit->risk, risk->fraud, fraud->attestation,
+            attestation->monitoring, monitoring->lending, lending->END
+
+INVOCATION
+----------
+  from pipeline.graph import pipeline
+  result = pipeline.invoke({"wallet_address": "e1b7c7..."})
+
+API KEY DISTRIBUTION
+--------------------
+  GROQ_API_KEY   ->  Fraud, Risk, Monitoring (via AgentLLM singleton cache)
+  GROQ_API_KEY_1 ->  Attestation, Lending
+
+  Two keys prevent rate-limit exhaustion. AgentLLM caches instances by key
+  name so each key gets one ChatGroq instance reused across calls.
+
+
+================================================================================
+  SHARED UTILITIES   (agents/utils/llm_utils.py)
+================================================================================
+
+AgentLLM
+--------
+  get_llm(key_name)            Returns cached ChatGroq(model="llama-3.3-70b-versatile",
+                               temperature=0) for the given env var key name
+  invoke_llm(llm, prompt)      HumanMessage call + parse_json_response
+  parse_json_response(resp)    Strips markdown code fences, parses JSON.
+                               Returns None on JSONDecodeError.
+
+Prompts
+-------
+  fraud_detection(wallet, data, score)         -> JSON: fraud_score, flags, reasoning, confidence
+  risk_analysis(score, tier, prob, sub_scores) -> JSON: early_warnings, risk_analysis, recommendation
+  attestation_summary(wallet, score, tier, ..) -> JSON: summary
+  credential_monitoring(wallet, score, tier,..)-> JSON: credential_active, reasoning, action
+  lending_recommendation(score, tier, prob,..) -> JSON: recommendation
+
+  All prompts request JSON responses. Temperature=0 ensures deterministic output.
+
+
+================================================================================
+  DATABASE INTEGRATION   (db/supabase.py)
+================================================================================
+
+TABLE: assessments
+------------------
+  id               uuid         primary key, auto-generated
+  wallet_address   text
+  credit_score     integer
+  risk_tier        text
+  default_prob_30d float
+  sub_scores       jsonb
+  shap_breakdown   jsonb
+  fraud_score      float
+  fraud_flags      jsonb
+  created_at       timestamptz  auto-set
+
+FUNCTIONS
+---------
+  save_attestation(payload)  ->  INSERT, returns "{SUPABASE_URL}/rest/v1/assessments?id=eq.{id}"
+  get_assessment(wallet)     ->  SELECT most recent row for wallet, returns dict | None
+
+
+================================================================================
+  ON-CHAIN INTEGRATION   (casper/)
+================================================================================
+
+WRITE PATH (AURUM_DEPLOY_MODE=live)
+-----------------------------------
+  Attestation agent calls casper/deploy_submitter.DeploySubmitter directly:
+    submit_contract_call(contract_hash, entrypoint, args)
+    -> casper-client put-deploy --session-hash <hex> --session-entry-point <ep>
+    -> returns { success, deploy_hash }
+
+  Cron monitor calls DeploySubmitter for revoke_credit_score:
+    POST /cron/monitor -> pipeline.invoke() -> if action=="revoke":
+      submitter.submit_contract_call(CreditRegistry, "revoke_credit_score",
+        { caller, borrower, revoked_at })
+
+  All entrypoints take an explicit "caller" string (deployer account-hash)
+  as their first argument.
+
+READ PATH (AURUM_DEPLOY_MODE=live)
+----------------------------------
+  contracts.AurumContracts.get_credit_score(borrower) uses call_getter():
+    submit_contract_call(get_score) + poll 60s + _extract_return_value()
+  Similarly: is_compliant(), get_reputation(), query_credit_profile()
+
+  NOTE: The oracle router (/oracle/query) reads from Supabase as the primary
+  low-latency cache. call_getter() is used for cross-validation only.
+
+DEPLOYED CONTRACTS (casper-test)
+---------------------------------
+  CreditRegistry     hash-804fe9e4...  contract-393bd1b8...
+  ComplianceRegistry hash-587d0cc2...  contract-3d3a930a...
+  OraclePaywall      hash-a70e0846...  contract-427ba79f...
+  ReputationRegistry hash-16769066...  contract-5bca99a0...
+
+
+================================================================================
+  INTEGRATION STATUS
+================================================================================
+
+WORKING (live)
+--------------
+  All 6 agents operational and tested end-to-end
+  XGBoost credit scoring + SHAP explainability
+  Groq LLM integration (Llama 3.3 70B, temperature=0) with fallback
+  CSPR.cloud live wallet data (wallet_activity, income via transfer history)
+  Supabase persistence (save + fetch)
+  FastAPI pipeline invocation (POST /assess)
+  On-chain issue_credit_score deploy (casper-test, live mode)
+  On-chain issue_compliance_token deploy (casper-test, live mode)
+  On-chain revoke_credit_score via cron (casper-test, live mode)
+  x402 structural payment verification (mock mode)
+  x402 on-chain transfer scan verification (live mode, X402_MODE=live)
+
+PARTIAL / MOCK FALLBACK
+-----------------------
+  defi, rwa, dao scoring dimensions  ->  always 0 in live mode (CSPR.cloud
+    testnet has no DeFi endpoints). wallet_activity, income, repayment work live.
+  Lending pool offers                ->  hardcoded (TrueFi, Maple, Clearpool)
+  x402 signature validation          ->  not implemented (on-chain transfer
+    scan is the live payment guard)
+  x402 nonce store                   ->  in-memory (clears on restart)
+
+NOT YET IMPLEMENTED
+-------------------
+  Frontend (web/) is a default Next.js skeleton — no UI built
+  Public API hosting (currently localhost:8000 only)
+  Per-agent key enforcement (all contract calls use deployer key)
+  Real DeFi protocol integrations (loans, repayments, yield)
+  IPFS attestation storage (Supabase is primary)
+
+
+================================================================================
+  TESTING
+================================================================================
+
+Run tests from api/ directory using the project venv:
+
+  Full pipeline (all 6 agents, uses current CSPR_CLOUD_MODE/AURUM_DEPLOY_MODE):
+    .venv/bin/python test_scripts/test_e2e.py
+
+  Single credit score deploy to testnet:
+    .venv/bin/python test_scripts/test_deploy_live.py
+
+  Contract envelope build + RPC connectivity:
+    .venv/bin/python test_scripts/test_contract_integration.py
+
+  Agent unit tests:
+    .venv/bin/python test_scripts/test_agents.py
+
+  Pipeline module imports and XGBoost smoke test:
+    .venv/bin/python test_scripts/test_pipeline.py
+
+  CSPR.cloud live endpoint validation:
+    .venv/bin/python test_scripts/test_cspr_live.py
+
+
+================================================================================
+  END OF DOCUMENTATION
+================================================================================
