@@ -375,31 +375,31 @@ class DeploySubmitter:
             return {"success": False, "error": str(exc)}
 
     def _format_arg(self, key: str, value: Any) -> str:
-        """Format an argument for casper-client --arg flag.
+        """Format an argument for casper-client --session-arg flag.
 
-        CLType rules:
-          bool          → bool
-          u8            → small ints 0-255 (flags, rates)
-          u32           → scores (0-1000), small timestamps
-          u64           → Unix timestamps, bps values
-          u512          → mote amounts
-          key           → account-hash-... strings
-          string        → all other strings
+        CLType rules for Aurum contracts:
+          bool          -> bool
+          u8            -> small ints 0-255 (flags, small enums like compliance level)
+          u32           -> scores (0-1000), bps (0-10000), counts
+          u64           -> Unix timestamps, mote amounts, large ints
+          string        -> all strings (caller, borrower, tier, hashes, etc.)
+
+        NOTE: All Aurum contracts use u64 for mote amounts (borrowing_limit_motes,
+        query_price_motes, etc.) — NOT u512. u512 is only for Casper native payment.
+        Do NOT use key CLType for account-hash-prefixed strings — contracts take String.
         """
         if isinstance(value, bool):
             return f"{key}:bool='{str(value).lower()}'"
         elif isinstance(value, int):
-            if key.endswith("_motes") or key.endswith("_amount") or key.endswith("_limit"):
-                return f"{key}:u512='{value}'"
-            elif key.endswith("_bps") or key.endswith("_at") or value >= 2**32:
+            if key.endswith("_bps") or key.endswith("_at"):
+                return f"{key}:u64='{value}'"
+            elif value >= 2**32:
                 return f"{key}:u64='{value}'"
             elif value >= 2**8:
                 return f"{key}:u32='{value}'"
             else:
                 return f"{key}:u8='{value}'"
         elif isinstance(value, str):
-            if value.startswith("account-hash-"):
-                return f"{key}:key='{value}'"
             return f"{key}:string='{value}'"
         else:
             return f"{key}:string='{str(value)}'"

@@ -6,28 +6,25 @@
 
 
 ================================================================================
-  PRIORITY 1 — CRITICAL / BLOCKING 
+  PRIORITY 1 — CRITICAL / BLOCKING  (demo or correctness broken without these)
 ================================================================================
 
-[ ] RUN END-TO-END TEST WITH LIVE MODES
-    Confirm POST /assess completes with CSPR_CLOUD_MODE=live + AURUM_DEPLOY_MODE=live
-    against a real testnet wallet and a tx_hash is returned.
+[x] FIX issue_credit_score DUPLICATE DEPLOY PROTECTION
+    DONE. attestation_agent.py now calls get_assessment() before deploying.
+    Uses update_score if a Supabase record exists, issue_credit_score if not.
+    Error 64658 (ERR_ALREADY_EXISTS) is now avoided.
+    File: api/agents/attestation_agent.py
+
+[x] VERIFY caller ARG IN ATTESTATION AGENT DEPLOY
+    DONE. Both issue_credit_score and issue_compliance_token now include
+    "caller": CASPER_ACCOUNT_HASH as the first arg in their args dict.
+    File: api/agents/attestation_agent.py
+
+[x] RUN END-TO-END TEST WITH LIVE MODES
+    DONE. tx_hash 7d55efaffb99fc1bc658659af8b6376a428a2cda76d80137cf6a903369b1db27
+    update_score + issue_compliance_token both deployed successfully.
+    Score: 509, Tier C, wallet_activity=1, income=100 (real CSPR.cloud data).
     File: api/test_scripts/test_e2e.py
-    Check: tx_hash is a real 64-char hex, not "mock-deploy-..."
-
-[ ] FIX issue_credit_score DUPLICATE DEPLOY PROTECTION
-    The CreditRegistry contract rejects issue_credit_score if a credential
-    already exists for the borrower (CredentialAlreadyExists error).
-    Attestation agent needs to check Supabase first and call update_score
-    instead of issue_credit_score when a record already exists.
-    File: api/agents/attestation_agent.py
-
-[ ] VERIFY caller ARG IN ATTESTATION AGENT DEPLOY
-    The deployed Odra contract entrypoints take a "caller" string as the
-    first argument. The attestation agent calls submitter.submit_contract_call()
-    directly and must include "caller": CASPER_ACCOUNT_HASH in its args dict.
-    Confirm this is present — if missing, every live deploy will fail silently.
-    File: api/agents/attestation_agent.py
 
 [ ] BUILD FRONTEND (web/)
     web/ is a default Next.js skeleton. Nothing is connected to the API.
@@ -39,7 +36,7 @@
 
 
 ================================================================================
-  PRIORITY 2 — HIGH  
+  PRIORITY 2 — HIGH  (product is incomplete without these)
 ================================================================================
 
 [ ] DEFI SCORING DIMENSIONS — LIVE DATA
@@ -65,7 +62,7 @@
 [ ] SWITCH X402_MODE TO LIVE
     X402_MODE=mock is currently set in api/.env.
     Change to live once a real CSPR payment test passes.
-    File: api/.env
+    File: api/.env  (currently: X402_MODE=mock)
 
 [ ] DEPLOY API TO PUBLIC HOST
     API is only accessible at localhost:8000.
@@ -75,7 +72,7 @@
 
 
 ================================================================================
-  PRIORITY 3 — MEDIUM  
+  PRIORITY 3 — MEDIUM  (correctness and robustness improvements)
 ================================================================================
 
 [ ] HANDLE call_getter() GAS COST AND LATENCY
@@ -104,14 +101,14 @@
     query-balance via casper-client CLI.
     File: api/casper/client.py
 
-[ ] STALE AGENTS/docs/AGENT_PIPELINE LOCATION
-    The AGENT_PIPELINE doc is at api/agents/docs/AGENT_PIPELINE.
-    The WORKFLOW and TODO docs are at api/docs/.
-    Consolidate all docs under api/docs/ for consistency.
+[ ] CONSOLIDATE DOCS LOCATION
+    AGENT_PIPELINE is at api/agents/docs/AGENT_PIPELINE.
+    WORKFLOW and TODO are at api/docs/.
+    Move AGENT_PIPELINE to api/docs/ for consistency.
 
 
 ================================================================================
-  PRIORITY 4 — LOW: Production
+  PRIORITY 4 — LOW  (production hardening, nice-to-have before mainnet)
 ================================================================================
 
 [ ] PER-AGENT KEY ENFORCEMENT
@@ -121,15 +118,15 @@
     to assign per-agent roles via assign_role().
     Files: api/agents/attestation_agent.py, contracts/credit_registry/src/lib.rs
 
-[ ] SEPARATE KEYS PER AGENT FOR LLM CALLS
-    All Groq calls currently share 2 keys. For production rate limits,
+[ ] SEPARATE GROQ KEYS PER AGENT
+    All Groq calls share 2 keys. For production rate limits,
     generate one key per agent.
 
 [ ] IPFS ATTESTATION STORAGE
     attestation_hash is currently a Supabase URL.
     For true decentralization, pin the attestation JSON to IPFS and store
     the IPFS CID as the on-chain attestation_hash.
-    File: api/agents/attestation_agent.py, api/db/supabase.py
+    Files: api/agents/attestation_agent.py, api/db/supabase.py
 
 [ ] REAL DEFI PROTOCOL INTEGRATIONS
     Lending pool offers (TrueFi, Maple, Clearpool) are hardcoded.
@@ -159,9 +156,9 @@
     Currently monitoring only runs during POST /cron/monitor re-scoring.
     Add a notification path: when monitoring_action="revoke", send an
     alert (email / webhook) to the wallet owner or admin.
-    File: api/agents/monitoring_agent.py, api/routers/cron.py
+    Files: api/agents/monitoring_agent.py, api/routers/cron.py
 
-[ ] ORACLE QUERY — SCORE HISTORY ENDPOINT
+[ ] ORACLE QUERY — FULL SCORE HISTORY
     GET /oracle/history returns only one record (most recent).
     Supabase query should return all records ordered by created_at desc.
     File: api/routers/oracle.py  ->  query_credit_history()
@@ -169,11 +166,11 @@
 [ ] SCORING MODEL — RETRAIN ON REAL DATA
     XGBoost model is trained on synthetic wallet profiles.
     Once real CSPR.cloud DeFi data is available, retrain and evaluate.
-    File: api/scoring/model.py, api/scoring/train.py (if it exists)
+    File: api/scoring/model.py
 
 
 ================================================================================
-  DONE (recently completed — for reference)
+  DONE
 ================================================================================
 
 [x] Deploy 4 smart contracts to casper-test
@@ -184,9 +181,12 @@
 [x] Wire contracts.py read methods to call_getter() (get_credit_score, is_compliant, etc.)
 [x] x402 live mode: on-chain transfer scan via verify_transfer_on_chain()
 [x] Fix cron.py revocation to use DeploySubmitter directly (not envelope dict)
-[x] Add caller arg to all contract write method args
+[x] Add caller arg to all contract write method args (attestation_agent + cron)
+[x] Fix ERR_ALREADY_EXISTS (64658): issue vs update based on existing Supabase record
+[x] Fix compliance level: send u8 integer (1/2) not string ("basic"/"restricted")
 [x] Update api/.env.example with all real variable names
 [x] Reorganize scripts/ into deploy/, contracts/, dev/, test/ subdirectories
+[x] Update WORKFLOW, AGENT_PIPELINE, and TODO docs
 
 
 ================================================================================
