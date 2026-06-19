@@ -427,8 +427,12 @@
 ================================================================================
 
   POST  /assess                  run full 6-agent pipeline, mint score on-chain
+                                 returns: score, sub_scores, shap, tier, default_prob,
+                                 default_prob_60d/90d, early_warning_flags, risk_analysis,
+                                 fraud_score, fraud_flags, tx_hash, attestation_hash,
+                                 attestation_summary, loan_offers, raw_wallet_data, etc.
   GET   /oracle/query?wallet=    x402-gated: return stored credit profile
-  GET   /oracle/history?wallet=  return score history (no payment required)
+  GET   /oracle/history?wallet=  return full score history (no payment required)
   GET   /oracle/payment-info     return x402 payment requirements
   POST  /cron/monitor            re-score all active credentials, revoke on-chain
   GET   /health                  system status, mode flags, contract check

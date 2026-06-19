@@ -3274,3 +3274,141 @@ select {
     transition: none;
   }
 }
+
+/* ─── Integration: error banner ─────────────────────────────────────────── */
+
+.dash-error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: color-mix(in srgb, var(--color-danger, #e55) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-danger, #e55) 30%, transparent);
+  color: var(--color-danger, #e55);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+}
+
+.dash-error-retry {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  border-radius: 8px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.dash-error-retry:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+/* ─── Integration: connect prompt / reassess button ─────────────────────── */
+
+.dash-connect-prompt {
+  display: flex;
+  justify-content: center;
+  padding: 0.75rem 0 0.5rem;
+}
+
+.dash-reassess-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.25rem 0 0.25rem;
+}
+
+.dash-reassess-btn {
+  background: transparent;
+  border: 1px solid var(--color-gold, #c6a435);
+  color: var(--color-gold, #c6a435);
+  border-radius: 8px;
+  padding: 0.25rem 0.875rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.dash-reassess-btn:hover {
+  background: color-mix(in srgb, var(--color-gold, #c6a435) 10%, transparent);
+}
+
+/* ─── Integration: loading placeholders ─────────────────────────────────── */
+
+.dash-stat-loading,
+.dash-ring-loading {
+  animation: aurum-pulse 1.2s ease-in-out infinite;
+  opacity: 0.5;
+}
+
+.dash-offer-placeholder {
+  padding: 0.75rem 0;
+  font-size: 0.875rem;
+  color: var(--color-muted, #888);
+}
+
+@keyframes aurum-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.8; }
+}
+
+/* ─── Casper Wallet: key display row ────────────────────────────────────── */
+
+.wallet-key-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: color-mix(in srgb, var(--color-gold, #c6a435) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-gold, #c6a435) 20%, transparent);
+  border-radius: 8px;
+  font-size: 0.8125rem;
+}
+
+.wallet-key-label {
+  color: var(--color-muted, #888);
+  white-space: nowrap;
+}
+
+.wallet-key-value {
+  font-family: monospace;
+  word-break: break-all;
+  color: var(--color-gold, #c6a435);
+}
+
+.wallet-install-hint {
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--color-muted, #888);
+}
+
+.wallet-install-hint a {
+  color: var(--color-gold, #c6a435);
+  text-decoration: none;
+}
+
+.wallet-install-hint a:hover {
+  text-decoration: underline;
+}
+
+/* ─── Oracle Demo: JSON response viewer ─────────────────────────────────── */
+
+.oracle-demo-json {
+  background: color-mix(in srgb, var(--color-surface, #111) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border, #333) 60%, transparent);
+  border-radius: 10px;
+  padding: 0.875rem 1rem;
+  font-family: monospace;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
+  color: var(--color-text, #e8e8e8);
+  max-height: 420px;
+  overflow-y: auto;
+}

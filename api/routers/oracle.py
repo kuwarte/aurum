@@ -8,7 +8,8 @@ Returns HTTP 402 with payment requirements if missing or invalid.
 import json
 import logging
 from fastapi import APIRouter, Query, HTTPException, Request
-from db.supabase import get_assessment
+from fastapi.responses import JSONResponse
+from db.supabase import get_assessment, get_assessment_history
 from casper.x402 import (
     X402Verifier,
     X402PaymentProof,
@@ -95,19 +96,23 @@ async def query_credit_profile(
 
 
 @router.get("/history")
-async def query_credit_history(wallet: str = Query(..., description="Wallet address")):
-    """Query credit score history for a wallet (no payment gate for history)."""
-    assessment = get_assessment(wallet)
-    if not assessment:
-        return {"wallet_address": wallet, "history": []}
+async def query_credit_history(
+    wallet: str = Query(..., description="Wallet address"),
+    limit: int = Query(20, description="Max history entries to return"),
+):
+    """Query full credit score history for a wallet (no payment gate)."""
+    history = get_assessment_history(wallet, limit=limit)
     return {
         "wallet_address": wallet,
         "history": [
             {
-                "score": assessment.get("credit_score"),
-                "tier": assessment.get("risk_tier"),
-                "timestamp": assessment.get("created_at"),
+                "score": row.get("credit_score"),
+                "tier": row.get("risk_tier"),
+                "timestamp": row.get("created_at"),
+                "tx_hash": row.get("tx_hash", ""),
+                "fraud_score": row.get("fraud_score", 0),
             }
+            for row in history
         ],
     }
 

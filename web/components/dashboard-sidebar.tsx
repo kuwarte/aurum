@@ -34,6 +34,7 @@ const NAV: NavGroup[] = [
   {
     group: "System",
     items: [
+      { label: "Oracle Demo", href: "/oracle-demo", badge: "x402" },
       { label: "Compliance", href: "/compliance" },
       { label: "Settings", href: "/settings" },
     ],

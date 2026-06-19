@@ -1,47 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
 import { useWalletSession } from "@/lib/use-wallet-session";
-
-const HISTORY_STATS = [
-  { label: "Events logged", value: "24", detail: "Recent score, oracle, and lending lifecycle entries", tone: "green" },
-  { label: "Last score update", value: "2h ago", detail: "Most recent composite refresh in the feed", tone: "gold" },
-  { label: "Credential renewals", value: "3", detail: "Successful attestation refreshes in the active window", tone: "green" },
-  { label: "Risk alerts", value: "1", detail: "One notable posture change still under watch", tone: "" },
-];
-
-const HISTORY_FEED = [
-  {
-    title: "Score updated",
-    time: "2 hours ago",
-    status: "Completed",
-    summary: "The credit agent lifted the score after another clean repayment cycle and stable wallet liquidity.",
-  },
-  {
-    title: "Oracle queried",
-    time: "5 hours ago",
-    status: "Verified",
-    summary: "Collateral feed freshness was rechecked before lender-side terms were repriced for the session.",
-  },
-  {
-    title: "Credential renewed",
-    time: "1 day ago",
-    status: "Minted",
-    summary: "Attestation Agent published a fresh credit credential snapshot for downstream protocol queries.",
-  },
-  {
-    title: "Risk assessed",
-    time: "1 day ago",
-    status: "Reviewed",
-    summary: "Risk Agent reran short-horizon default posture and kept the wallet in a top-tier confidence band.",
-  },
-  {
-    title: "Offer repriced",
-    time: "2 days ago",
-    status: "Synced",
-    summary: "Lending desks compressed APR after monitor health, diversification, and repayment cadence held steady.",
-  },
-];
+import { useAssessment } from "@/lib/use-assessment";
+import { fetchOracleHistory, type OracleHistoryEntry } from "@/lib/api-client";
 
 const HISTORY_GROUPS = [
   {
@@ -58,8 +21,95 @@ const HISTORY_GROUPS = [
   },
 ];
 
+function relativeTime(timestamp: string): string {
+  try {
+    const diff = Date.now() - new Date(timestamp).getTime();
+    const mins = Math.floor(diff / 60_000);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  } catch {
+    return "—";
+  }
+}
+
 export default function HistoryPage() {
-  const { connected, toggleWallet, walletLabel } = useWalletSession();
+  const { connected, address, toggleWallet, walletLabel } = useWalletSession();
+  const { assessment, isIdle, assess } = useAssessment();
+  const [history, setHistory] = useState<OracleHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  // Auto-assess if needed
+  useEffect(() => {
+    if (connected && address && isIdle) {
+      void assess(address);
+    }
+  }, [connected, address, isIdle, assess]);
+
+  // Fetch oracle history when wallet address is available
+  useEffect(() => {
+    if (!address) return;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    fetchOracleHistory(address)
+      .then((res) => {
+        setHistory(res.history);
+      })
+      .catch((err) => {
+        setHistoryError(err instanceof Error ? err.message : "Failed to load history");
+      })
+      .finally(() => setHistoryLoading(false));
+  }, [address]);
+
+  // Build activity feed from oracle history + current assessment
+  const activityFeed = [
+    ...(assessment
+      ? [
+          {
+            title: "Score assessed",
+            time: "Just now",
+            status: "Completed",
+            summary: `Credit score ${assessment.score} — tier ${assessment.tier} — credential ${assessment.active ? "active" : "inactive"}.`,
+          },
+        ]
+      : []),
+    ...history.map((entry) => ({
+      title: "Score recorded",
+      time: relativeTime(entry.timestamp),
+      status: "Verified",
+      summary: `Score ${entry.score} — tier ${entry.tier} — recorded on Casper via oracle.`,
+    })),
+  ];
+
+  const stats = [
+    {
+      label: "Events logged",
+      value: String(activityFeed.length || "—"),
+      detail: "Score and oracle lifecycle entries",
+      tone: "green",
+    },
+    {
+      label: "Last score update",
+      value: assessment ? "Just now" : history[0] ? relativeTime(history[0].timestamp) : "—",
+      detail: "Most recent composite refresh",
+      tone: "gold",
+    },
+    {
+      label: "History entries",
+      value: historyLoading ? "…" : String(history.length),
+      detail: "Oracle-recorded assessments",
+      tone: "green",
+    },
+    {
+      label: "Current tier",
+      value: assessment?.tier ? `Tier ${assessment.tier}` : history[0]?.tier ? `Tier ${history[0].tier}` : "—",
+      detail: assessment ? "From latest pipeline run" : "From oracle history",
+      tone: "",
+    },
+  ];
 
   return (
     <main className="dash-shell">
@@ -74,16 +124,25 @@ export default function HistoryPage() {
           <article className="dash-page-intro">
             <h1 className="dash-page-title">History</h1>
             <p className="dash-page-caption">
-              Review the living audit trail behind the Aurum profile, from score updates and oracle reads to
-              credential renewals and lender-side repricing events.
+              Review the living audit trail behind the Aurum profile, from score
+              updates and oracle reads to credential renewals and lender-side
+              repricing events.
             </p>
           </article>
 
+          {historyError && (
+            <div className="dash-error-banner" role="alert">
+              <span>History load failed: {historyError}</span>
+            </div>
+          )}
+
           <div className="dash-stat-row">
-            {HISTORY_STATS.map((stat) => (
+            {stats.map((stat) => (
               <article key={stat.label} className="dash-stat-card aurora-border">
                 <div className="dash-stat-label">{stat.label}</div>
-                <div className={`dash-stat-value${stat.tone ? ` ${stat.tone}` : ""}`}>{stat.value}</div>
+                <div className={`dash-stat-value${stat.tone ? ` ${stat.tone}` : ""}`}>
+                  {stat.value}
+                </div>
                 <div className="dash-stat-delta">{stat.detail}</div>
               </article>
             ))}
@@ -95,13 +154,28 @@ export default function HistoryPage() {
                 <span className="dash-panel-title">Activity feed</span>
                 <span className="dash-live-badge">
                   <span className="dash-pill-dot" />
-                  Rolling 72h
+                  {historyLoading ? "Loading…" : "Live"}
                 </span>
               </div>
 
               <div className="score-bars">
-                {HISTORY_FEED.map((entry) => (
-                  <div key={`${entry.title}-${entry.time}`} className="score-row">
+                {activityFeed.length === 0 && !historyLoading && (
+                  <div className="score-row">
+                    <div className="agent-subtitle">
+                      {connected
+                        ? "No history found. Run an assessment to create the first entry."
+                        : "Connect your wallet to see history."}
+                    </div>
+                  </div>
+                )}
+                {historyLoading && (
+                  <div className="score-row">
+                    <div className="agent-subtitle">Loading oracle history…</div>
+                  </div>
+                )}
+                {activityFeed.map((entry, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: order is stable
+                  <div key={i} className="score-row">
                     <header>
                       <div>
                         <strong>{entry.title}</strong>
@@ -119,8 +193,9 @@ export default function HistoryPage() {
               <div>
                 <h2>What gets recorded</h2>
                 <p className="chart-note">
-                  History is not just a changelog. It is the evidence layer that lets operators and lenders trace why
-                  credit posture moved, when it moved, and which subsystem triggered it.
+                  History is not just a changelog. It is the evidence layer that
+                  lets operators and lenders trace why credit posture moved, when
+                  it moved, and which subsystem triggered it.
                 </p>
               </div>
 
@@ -132,6 +207,15 @@ export default function HistoryPage() {
                   </article>
                 ))}
               </div>
+
+              {assessment && (
+                <div className="score-row" style={{ marginTop: "1rem" }}>
+                  <strong>Last tx hash</strong>
+                  <div className="agent-subtitle" style={{ wordBreak: "break-all" }}>
+                    {assessment.tx_hash}
+                  </div>
+                </div>
+              )}
             </article>
           </div>
         </section>

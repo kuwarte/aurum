@@ -5,6 +5,7 @@ import "./globals.css";
 import { AppShell } from "@/components/app-shell";
 import { AurumWagmiProvider } from "@/components/wagmi-provider";
 import { AppPreferencesProvider } from "@/lib/app-preferences";
+import { AssessmentProvider } from "@/lib/use-assessment";
 
 const headingFont = Space_Grotesk({
   variable: "--font-heading",
@@ -48,7 +49,9 @@ export default function RootLayout({
         <div className="site-bg" />
         <AurumWagmiProvider>
           <AppPreferencesProvider>
-            <AppShell>{children}</AppShell>
+            <AssessmentProvider>
+              <AppShell>{children}</AppShell>
+            </AssessmentProvider>
           </AppPreferencesProvider>
         </AurumWagmiProvider>
       </body>

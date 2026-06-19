@@ -1,81 +1,59 @@
 "use client";
 
-import { useMemo, useSyncExternalStore } from "react";
-import { useAccount, useConnect, useDisconnect } from "wagmi";
+/**
+ * useWalletSession
+ *
+ * Thin wrapper over useCasperWallet that preserves the same interface
+ * the rest of the app already uses. All pages call this — they don't
+ * need to know about the Casper Wallet internals.
+ */
 
-function formatWalletAddress(address?: string) {
-  if (!address) {
-    return "Not connected";
-  }
-
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
-}
-
-function subscribe() {
-  return () => {};
-}
+import { useMemo } from "react";
+import { useCasperWallet } from "@/lib/casper-wallet";
 
 export function useWalletSession() {
-  const ready = useSyncExternalStore(subscribe, () => true, () => false);
-  const { address, connector, isConnected } = useAccount();
-  const { connect, connectors, isPending, error } = useConnect();
-  const { disconnect } = useDisconnect();
+  const {
+    available,
+    connected,
+    isConnecting,
+    publicKey,
+    walletLabel,
+    address,
+    connectError,
+    connect,
+    disconnect,
+    toggleWallet,
+  } = useCasperWallet();
 
-  const primaryConnector = connectors[0];
-  const connected = ready && isConnected;
-
-  const walletLabel = connected ? formatWalletAddress(address) : "Not connected";
-  const providerLabel = connected ? connector?.name ?? "Injected wallet" : "Not connected";
-
-  const connectWallet = () => {
-    if (!primaryConnector) {
-      return;
-    }
-
-    connect({ connector: primaryConnector });
-  };
-
-  const disconnectWallet = () => {
-    disconnect();
-  };
-
-  const toggleWallet = () => {
-    if (connected) {
-      disconnectWallet();
-      return;
-    }
-
-    connectWallet();
-  };
+  const providerLabel = connected
+    ? "Casper Wallet"
+    : available
+    ? "Casper Wallet (not connected)"
+    : "Casper Wallet not installed";
 
   const statusText = useMemo(() => {
-    if (!ready) {
-      return "Checking wallet availability";
-    }
-
-    if (isPending) {
-      return "Waiting for wallet approval";
-    }
-
-    if (connected) {
-      return "Connected session";
-    }
-
+    if (isConnecting) return "Waiting for wallet approval";
+    if (connected)    return "Connected session";
+    if (!available)   return "Install Casper Wallet extension";
     return "Awaiting wallet session";
-  }, [connected, isPending, ready]);
+  }, [available, connected, isConnecting]);
 
   return {
+    // address is the public key hex (what backend expects as wallet_address)
     address,
     connected,
-    connectError: error?.message ?? null,
-    connectWallet,
-    connectorName: connector?.name ?? null,
-    disconnectWallet,
-    isConnecting: isPending,
+    connectError,
+    connectWallet: connect,
+    connectorName: connected ? "Casper Wallet" : null,
+    disconnectWallet: disconnect,
+    isConnecting,
     providerLabel,
-    ready,
+    ready: true,           // no async hydration needed
     statusText,
     toggleWallet,
     walletLabel,
+    // extra Casper-specific fields
+    publicKey,
+    available,
   };
 }

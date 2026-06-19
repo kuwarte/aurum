@@ -15,6 +15,13 @@ deployed on casper-test. CSPR.cloud wallet data is live. DeFi data (loans,
 repayments, yield, RWA) falls back to empty lists because CSPR.cloud testnet
 does not yet expose those endpoints.
 
+Frontend: Next.js 15 App Router, fully wired to backend. Casper Wallet browser
+extension used for wallet connection. All dashboard pages consume live /assess
+data. Oracle Demo page demonstrates full x402 payment flow.
+
+LLM JSON parsing: parse_json_response() handles markdown code fences, empty
+responses, JSON-in-prose extraction, and retries on transient Groq errors.
+
 
 ================================================================================
   AGENT 1: CREDIT AGENT   (agents/credit_agent.py)
@@ -357,8 +364,11 @@ TABLE: assessments
 
 FUNCTIONS
 ---------
-  save_attestation(payload)  ->  INSERT, returns "{SUPABASE_URL}/rest/v1/assessments?id=eq.{id}"
-  get_assessment(wallet)     ->  SELECT most recent row for wallet, returns dict | None
+  save_attestation(payload)        ->  INSERT new row, back-fills attestation_hash,
+                                       returns "{SUPABASE_URL}/rest/v1/assessments?id=eq.{id}"
+                                       NOTE: always appends, never overwrites — history preserved
+  get_assessment(wallet)           ->  SELECT most recent row for wallet, returns dict | None
+  get_assessment_history(wallet)   ->  SELECT all rows ordered newest first, returns list
 
 
 ================================================================================
@@ -426,11 +436,13 @@ PARTIAL / MOCK FALLBACK
 
 NOT YET IMPLEMENTED
 -------------------
-  Frontend (web/) is a default Next.js skeleton — no UI built
-  Public API hosting (currently localhost:8000 only)
   Per-agent key enforcement (all contract calls use deployer key)
   Real DeFi protocol integrations (loans, repayments, yield)
   IPFS attestation storage (Supabase is primary)
+  Public API hosting (currently localhost:8000)
+  Async pipeline execution (pipeline.invoke() blocks event loop)
+  x402 signature cryptographic validation (on-chain transfer scan is guard)
+  x402 nonce persistence (in-memory, clears on restart)
 
 
 ================================================================================

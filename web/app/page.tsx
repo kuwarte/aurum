@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppPreferences } from "@/lib/app-preferences";
 import { formatCurrencyAmount } from "@/lib/currency";
-import { shapFactors } from "@/lib/aurum-data";
+import { useAssessment } from "@/lib/use-assessment";
+import { shapFactors as fallbackShapFactors } from "@/lib/aurum-data";
 
 type LandingStat = {
   label: string;
@@ -240,21 +241,40 @@ export default function Home() {
   const {
     preferences: { currency },
   } = useAppPreferences();
+  const { assessment } = useAssessment();
   const ringRef = useRef<SVGCircleElement>(null);
   const heroRef = useRef<HTMLElement>(null);
   const [activeFactorIndex, setActiveFactorIndex] = useState(0);
   const [activeAgentIndex, setActiveAgentIndex] = useState(0);
   const [activeUseCaseIndex, setActiveUseCaseIndex] = useState(0);
-  const maxShapImpact = Math.max(
-    ...shapFactors.map((factor) => Math.abs(factor.impact)),
-  );
+
+  // Use live SHAP data if a wallet is assessed, otherwise show demo factors
+  const shapFactors = useMemo(() => {
+    if (!assessment?.shap) return fallbackShapFactors;
+    return Object.entries(assessment.shap)
+      .map(([key, val]) => ({
+        label: key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        impact: Math.round(val),
+        reason: val >= 0
+          ? `${key.replace(/_/g, " ")} is contributing positively to the score.`
+          : `${key.replace(/_/g, " ")} is dragging the score — improvement recommended.`,
+      }))
+      .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact));
+  }, [assessment]);
+
+  // Live score or demo value
+  const liveScore = assessment?.score ?? 784;
+  const liveTier  = assessment?.tier  ?? "A";
+  const liveMaxOffer = assessment?.loan_offers?.[0]?.max_loan ?? 24000;
+
+  const maxShapImpact = Math.max(...shapFactors.map((factor) => Math.abs(factor.impact)));
   const activeFactor = shapFactors[activeFactorIndex] ?? shapFactors[0];
   const activeAgent = AGENTS[activeAgentIndex] ?? AGENTS[0];
   const activeAgentDetail = AGENT_DETAILS[activeAgentIndex] ?? AGENT_DETAILS[0];
   const activeUseCase = USE_CASES[activeUseCaseIndex] ?? USE_CASES[0];
   const signalScore = useMemo(
-    () => 784 + activeFactor.impact,
-    [activeFactor.impact],
+    () => liveScore + (activeFactor?.impact ?? 0),
+    [liveScore, activeFactor],
   );
 
   useEffect(() => {
@@ -425,27 +445,29 @@ export default function Home() {
                 />
               </svg>
               <div className="landing-score-ring-inner">
-                <span className="landing-score-number">784</span>
+                <span className="landing-score-number">{liveScore}</span>
                 <span className="landing-score-sub">/ 1000</span>
               </div>
             </div>
 
-            <div className="landing-score-grid">
+              <div className="landing-score-grid">
               <div className="landing-score-grid-cell">
                 <span>Tier</span>
-                <strong className="landing-gold">Tier A</strong>
+                <strong className="landing-gold">Tier {liveTier}</strong>
               </div>
               <div className="landing-score-grid-cell">
                 <span>Oracle sync</span>
-                <strong>12s ago</strong>
+                <strong>{assessment ? "Just now" : "12s ago"}</strong>
               </div>
               <div className="landing-score-grid-cell">
                 <span>Monitor health</span>
-                <strong className="landing-green">Stable</strong>
+                <strong className="landing-green">
+                  {assessment ? (assessment.active ? "Active" : "Inactive") : "Stable"}
+                </strong>
               </div>
               <div className="landing-score-grid-cell">
                 <span>Max offer</span>
-                <strong>{formatCurrencyAmount(24000, currency)}</strong>
+                <strong>{formatCurrencyAmount(liveMaxOffer, currency)}</strong>
               </div>
             </div>
 

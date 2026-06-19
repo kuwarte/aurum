@@ -28,28 +28,62 @@ class AgentLLM:
     
     @staticmethod
     def parse_json_response(response) -> Optional[Dict[str, Any]]:
-        """Parse LLM response, handling markdown code blocks."""
+        """Parse LLM response, handling markdown code blocks and trailing text."""
         content = response.content.strip()
-        
-        if content.startswith('```'):
-            content = content.split('\n', 1)[1]
-            content = content.rsplit('```', 1)[0]
-        
+
+        if not content:
+            print("LLM returned empty response")
+            return None
+
+        # Strip markdown code fences: ```json ... ``` or ``` ... ```
+        if content.startswith("```"):
+            # Remove opening fence line (may be ```json or just ```)
+            lines = content.splitlines()
+            # Drop first line (the opening fence)
+            lines = lines[1:]
+            # Drop last line if it's a closing fence
+            if lines and lines[-1].strip().startswith("```"):
+                lines = lines[:-1]
+            content = "\n".join(lines).strip()
+
+        # Try direct parse first
         try:
             return json.loads(content)
-        except json.JSONDecodeError as e:
-            print(f"JSON parsing failed: {e}")
-            return None
+        except json.JSONDecodeError:
+            pass
+
+        # Try to extract first {...} or [...] block from the content
+        for start_char, end_char in [('{', '}'), ('[', ']')]:
+            start = content.find(start_char)
+            end = content.rfind(end_char)
+            if start != -1 and end != -1 and end > start:
+                try:
+                    return json.loads(content[start:end + 1])
+                except json.JSONDecodeError:
+                    pass
+
+        print(f"JSON parsing failed — could not extract JSON from response: {content[:200]!r}")
+        return None
     
     @staticmethod
-    def invoke_llm(llm: ChatGroq, prompt: str) -> Optional[Dict[str, Any]]:
-        """Invoke LLM and parse JSON response."""
-        try:
-            response = llm.invoke([HumanMessage(content=prompt)])
-            return AgentLLM.parse_json_response(response)
-        except Exception as e:
-            print(f"LLM invocation failed: {e}")
-            return None
+    def invoke_llm(llm: ChatGroq, prompt: str, retries: int = 2) -> Optional[Dict[str, Any]]:
+        """Invoke LLM and parse JSON response. Retries on transient failures."""
+        last_error = None
+        for attempt in range(retries + 1):
+            try:
+                response = llm.invoke([HumanMessage(content=prompt)])
+                result = AgentLLM.parse_json_response(response)
+                if result is not None:
+                    return result
+                # parse returned None — don't retry, fall through to None
+                return None
+            except Exception as e:
+                last_error = e
+                if attempt < retries:
+                    print(f"LLM invocation attempt {attempt + 1} failed: {e} — retrying")
+                else:
+                    print(f"LLM invocation failed after {retries + 1} attempts: {e}")
+        return None
 
 
 class Prompts:

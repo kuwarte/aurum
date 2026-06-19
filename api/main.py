@@ -7,12 +7,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
+import os
+
+# Load .env FIRST — before any router imports that read env vars at module level
+load_dotenv()
+
 from routers.assess import router as assess_router
 from routers.oracle import router as oracle_router
 from routers.cron import router as cron_router
-import os
-
-load_dotenv()
 
 app = FastAPI(
     title="Aurum Protocol API",

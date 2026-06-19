@@ -13,6 +13,7 @@ export function WalletConnect() {
     preferences: { defaultView },
   } = useAppPreferences();
   const {
+    available,
     connected,
     connectError,
     isConnecting,
@@ -20,6 +21,7 @@ export function WalletConnect() {
     statusText,
     toggleWallet,
     walletLabel,
+    publicKey,
   } = useWalletSession();
 
   return (
@@ -27,19 +29,38 @@ export function WalletConnect() {
       <div className="wallet-copy">
         <h2>Connect once, surface the full credit context.</h2>
         <p>
-          Start from a wallet identity, then let Aurum assess repayment
+          Start from a Casper wallet identity, then let Aurum assess repayment
           confidence, oracle state, agent health, and RWA backing from the same
           session.
         </p>
         <div className="wallet-actions">
-          <button
-            type="button"
-            className="wallet-button primary"
-            onClick={connected ? () => router.push(resolveDefaultViewHref(defaultView)) : toggleWallet}
-          >
-            {connected ? "Open app" : isConnecting ? "Connecting..." : "Connect wallet"}
-          </button>
-          {connected ? (
+          {!available ? (
+            <a
+              href="https://www.casperwallet.io/"
+              target="_blank"
+              rel="noreferrer"
+              className="wallet-button primary"
+            >
+              Install Casper Wallet
+            </a>
+          ) : (
+            <button
+              type="button"
+              className="wallet-button primary"
+              onClick={
+                connected
+                  ? () => router.push(resolveDefaultViewHref(defaultView))
+                  : toggleWallet
+              }
+            >
+              {connected
+                ? "Open app"
+                : isConnecting
+                ? "Connecting…"
+                : "Connect Casper Wallet"}
+            </button>
+          )}
+          {connected && (
             <button
               type="button"
               className="wallet-button secondary"
@@ -47,7 +68,7 @@ export function WalletConnect() {
             >
               Disconnect
             </button>
-          ) : null}
+          )}
         </div>
       </div>
 
@@ -68,15 +89,41 @@ export function WalletConnect() {
           </div>
           <div>
             <span>Network</span>
-            <strong>{connected ? "Injected EVM" : "Waiting"}</strong>
+            <strong>{connected ? "Casper Testnet" : "Waiting"}</strong>
           </div>
           <div>
             <span>Assessment</span>
-            <strong>{connected ? "Ready" : isConnecting ? "Authorizing" : "Pending"}</strong>
+            <strong>
+              {connected ? "Ready" : isConnecting ? "Authorizing" : "Pending"}
+            </strong>
           </div>
         </div>
 
-        {connectError ? <p className="wallet-error">{connectError}</p> : null}
+        {connected && publicKey && (
+          <div className="wallet-key-row">
+            <span className="wallet-key-label">Public key</span>
+            <span className="wallet-key-value" title={publicKey}>
+              {publicKey.slice(0, 20)}…{publicKey.slice(-8)}
+            </span>
+          </div>
+        )}
+
+        {connectError ? (
+          <p className="wallet-error">{connectError}</p>
+        ) : null}
+
+        {!available && (
+          <p className="wallet-install-hint">
+            Casper Wallet extension required.{" "}
+            <a
+              href="https://www.casperwallet.io/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Get it here →
+            </a>
+          </p>
+        )}
       </div>
     </article>
   );

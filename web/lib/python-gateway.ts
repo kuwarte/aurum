@@ -26,16 +26,31 @@ async function readRequestBody(request: Request) {
   return text.length > 0 ? text : undefined;
 }
 
+// Headers that are safe to forward to the backend
+const FORWARD_HEADERS = [
+  "content-type",
+  "x-402-payment-proof",
+  "authorization",
+];
+
 export async function proxyPythonRequest(request: Request, pathname: string) {
   const targetUrl = buildTargetUrl(pathname, request.url);
   const body = await readRequestBody(request);
 
+  // Build forwarded headers
+  const forwardedHeaders: Record<string, string> = {};
+  for (const name of FORWARD_HEADERS) {
+    const value = request.headers.get(name);
+    if (value) forwardedHeaders[name] = value;
+  }
+  if (!forwardedHeaders["content-type"]) {
+    forwardedHeaders["content-type"] = "application/json";
+  }
+
   try {
     const response = await fetch(targetUrl, {
       method: request.method,
-      headers: {
-        "content-type": request.headers.get("content-type") ?? "application/json",
-      },
+      headers: forwardedHeaders,
       body,
       cache: "no-store",
     });
