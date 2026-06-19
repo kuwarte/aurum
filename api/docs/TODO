@@ -112,7 +112,7 @@
     Fix: persist consumed nonces in Supabase with TTL.
     File: api/casper/x402.py → X402Verifier._used_nonces
 
-[ ] RUN SUPABASE MIGRATION 002
+[x] RUN SUPABASE MIGRATION 002
     credential_active column must be added to assessments table.
     Run in Supabase SQL editor:
       ALTER TABLE assessments ADD COLUMN IF NOT EXISTS credential_active boolean default true;
