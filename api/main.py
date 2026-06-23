@@ -101,6 +101,24 @@ def config():
     }
 
 
+@app.get("/config/status", tags=["System"])
+def config_status():
+    """Return safe runtime status flags for frontend diagnostics."""
+    return {
+        "status": "healthy",
+        "deploy_mode": os.getenv("AURUM_DEPLOY_MODE", "mock"),
+        "cspr_cloud_mode": os.getenv("CSPR_CLOUD_MODE", "mock"),
+        "x402_mode": os.getenv("X402_MODE", "mock"),
+        "cron_secret_configured": bool(os.getenv("CRON_SECRET")),
+        "contracts_configured": all([
+            os.getenv("CREDIT_REGISTRY_HASH"),
+            os.getenv("COMPLIANCE_REGISTRY_HASH"),
+            os.getenv("ORACLE_PAYWALL_HASH"),
+            os.getenv("REPUTATION_REGISTRY_HASH"),
+        ]),
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(

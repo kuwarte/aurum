@@ -40,18 +40,18 @@ export default function LendingDemoPage() {
   const tier = assessment?.tier ?? "B";
   const score = assessment?.score ?? 682;
   const defaultProb = assessment?.default_prob ?? 0.067;
-  const offers = assessment?.loan_offers?.length
-    ? assessment.loan_offers
-    : [
-        { protocol: "Maple", rate: "12%", max_loan: 20000 },
-        { protocol: "Clearpool", rate: "18%", max_loan: 5000 },
-      ];
-  const topOffer = offers[0];
+  const demoOffers = [
+    { protocol: "Maple", rate: "12%", max_loan: 20000 },
+    { protocol: "Clearpool", rate: "18%", max_loan: 5000 },
+  ];
+  const offers = assessment ? assessment.loan_offers : demoOffers;
+  const topOffer = offers[0] ?? demoOffers[0];
   const topOfferValue = formatCurrencyWithEstimate(
     topOffer.max_loan,
     currency,
     showFiatEstimate,
   );
+  const hasAssessment = Boolean(assessment);
 
   return (
     <main className="dash-shell">
@@ -97,13 +97,37 @@ export default function LendingDemoPage() {
             </article>
           </div>
 
+          {!connected && (
+            <div className="dash-info-banner">
+              Connect a Casper wallet to replace the demo underwriting profile with wallet-specific data.
+            </div>
+          )}
+
+          {isLoading && (
+            <div className="dash-info-banner">
+              Running a fresh wallet assessment for the lending demo.
+            </div>
+          )}
+
+          {assessmentSource === "cache" && (
+            <div className="dash-info-banner">
+              Loaded from cached assessment history. Use Re-assess to run a fresh check.
+            </div>
+          )}
+
+          {assessment?.fallback_used && (
+            <div className="dash-info-banner">
+              AI explanation is temporarily unavailable. Fallback scoring rules were used.
+            </div>
+          )}
+
           <div className="detail-grid">
             <article className="data-card aurora-border">
               <div className="dash-panel-head">
                 <span className="dash-panel-title">Credit bureau response</span>
-                <span className="dash-live-badge">
-                  <span className="dash-pill-dot" />
-                  {assessment ? "Wallet data" : "Demo data"}
+                  <span className="dash-live-badge">
+                    <span className="dash-pill-dot" />
+                  {hasAssessment ? "Wallet data" : "Demo data"}
                 </span>
               </div>
 
@@ -161,6 +185,12 @@ export default function LendingDemoPage() {
               </div>
 
               <div className="dash-offer-list" style={{ marginTop: "1rem" }}>
+                {hasAssessment && offers.length === 0 && (
+                  <div className="dash-offer-placeholder">
+                    No eligible loan offers for this wallet yet.
+                  </div>
+                )}
+
                 {offers.map((offer) => {
                   const value = formatCurrencyWithEstimate(
                     offer.max_loan,
@@ -181,9 +211,9 @@ export default function LendingDemoPage() {
               </div>
 
               <p className="chart-note" style={{ marginTop: "1rem" }}>
-                The demo offer list is illustrative unless the connected wallet
-                already has a live Aurum assessment with returned lending-agent
-                offers.
+                {hasAssessment
+                  ? "Offers are returned by Aurum's lending agent for the assessed wallet."
+                  : "The demo offer list is illustrative until a wallet assessment returns lending-agent offers."}
               </p>
             </article>
           </div>

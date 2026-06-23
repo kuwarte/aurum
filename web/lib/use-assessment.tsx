@@ -23,6 +23,7 @@ import {
   useState,
 } from "react";
 import {
+  ApiError,
   fetchOracleHistory,
   runAssessment,
   type AssessmentResponse,
@@ -63,8 +64,7 @@ export function AssessmentProvider({
       const data = await runAssessment(walletAddress);
       setState({ status: "success", walletAddress, data, source: "live" });
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Assessment failed";
+      const message = assessmentErrorMessage(err);
       setState({ status: "error", walletAddress, message });
     }
   }, []);
@@ -165,10 +165,31 @@ function assessmentFromHistory(entry: OracleHistoryEntry): AssessmentResponse {
     borrowing_limit_motes: 0,
     compliance_level: "",
     deploy_mode: "cached",
+    cspr_cloud_mode: "cached",
+    source: "cache",
+    llm_status: "success",
+    fallback_used: false,
     active: entry.active ?? true,
     monitoring_action: "cached",
     loan_offers: entry.loan_offers ?? [],
     lending_recommendation: "Run Re-assess to refresh lending recommendations.",
     raw_wallet_data: {},
   };
+}
+
+function assessmentErrorMessage(err: unknown) {
+  if (err instanceof ApiError) {
+    if (err.status === 422) {
+      return "Invalid Casper wallet address. Use a 01/02-prefixed public key or account-hash value.";
+    }
+    if (err.status === 429) {
+      return "Assessment rate limit reached. Please wait before trying again.";
+    }
+    if (err.status === 503) {
+      return "Aurum API is unavailable. Make sure the backend is running on the configured API URL.";
+    }
+    return err.message;
+  }
+
+  return err instanceof Error ? err.message : "Assessment failed";
 }

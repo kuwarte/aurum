@@ -41,8 +41,10 @@ def attestation_agent(state: PipelineState) -> PipelineState:
 
     if validation:
         attestation_summary = validation.get("summary", "Credit assessment completed.")
+        llm_fields = AgentLLM.status_fields(state, fallback_used=False)
     else:
         attestation_summary = f"Credit score {state['credit_score']} assigned with tier {state['risk_tier']}."
+        llm_fields = AgentLLM.status_fields(state, fallback_used=True)
 
     attestation_payload = {
         "wallet": state["wallet_address"],
@@ -158,6 +160,7 @@ def attestation_agent(state: PipelineState) -> PipelineState:
                 
             return {
                 **state,
+                **llm_fields,
                 "attestation_hash": attestation_hash,
                 "tx_hash": tx_hash,
                 "attestation_summary": attestation_summary,
@@ -173,6 +176,7 @@ def attestation_agent(state: PipelineState) -> PipelineState:
             tx_hash = f"error-{state['wallet_address'][:16]}"
             return {
                 **state,
+                **llm_fields,
                 "attestation_hash": attestation_hash,
                 "tx_hash": tx_hash,
                 "attestation_summary": attestation_summary,
@@ -205,6 +209,7 @@ def attestation_agent(state: PipelineState) -> PipelineState:
 
         return {
             **state,
+            **llm_fields,
             "attestation_hash": attestation_hash,
             "tx_hash": tx_hash,
             "attestation_summary": attestation_summary,

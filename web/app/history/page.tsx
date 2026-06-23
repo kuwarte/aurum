@@ -52,10 +52,9 @@ export default function HistoryPage() {
   // Fetch oracle history when wallet address is available
   useEffect(() => {
     if (!address) return;
-    setHistoryLoading(true);
-    setHistoryError(null);
     fetchOracleHistory(address)
       .then((res) => {
+        setHistoryError(null);
         setHistory(res.history);
       })
       .catch((err) => {

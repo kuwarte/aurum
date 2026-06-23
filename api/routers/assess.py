@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from collections import defaultdict, deque
 
@@ -93,6 +94,10 @@ async def assess(body: dict, request: Request):
         "borrowing_limit_motes": result.get("borrowing_limit_motes", 0),
         "compliance_level":    result.get("compliance_level", ""),
         "deploy_mode":         result.get("deploy_mode", "mock"),
+        "cspr_cloud_mode":     os.getenv("CSPR_CLOUD_MODE", "mock"),
+        "source":              "fresh",
+        "llm_status":          result.get("llm_status", "success"),
+        "fallback_used":       bool(result.get("fallback_used", False)),
         # Monitoring
         "active":              result["credential_active"],
         "monitoring_action":   result.get("monitoring_action", "maintain"),

@@ -104,6 +104,10 @@ export type AssessmentResponse = {
   borrowing_limit_motes: number;
   compliance_level: string;
   deploy_mode: string;
+  cspr_cloud_mode?: string;
+  source?: "fresh" | "cache";
+  llm_status?: "success" | "fallback" | "unavailable" | "rate_limited";
+  fallback_used?: boolean;
   // Monitoring
   active: boolean;
   monitoring_action: string;
@@ -157,6 +161,15 @@ export type OracleHistoryEntry = {
   active?: boolean;
 };
 
+export type SystemStatusResponse = {
+  status: string;
+  deploy_mode: string;
+  cspr_cloud_mode: string;
+  x402_mode: string;
+  cron_secret_configured: boolean;
+  contracts_configured: boolean;
+};
+
 export type OracleHistoryResponse = {
   wallet_address: string;
   history: OracleHistoryEntry[];
@@ -167,6 +180,11 @@ export type CronMonitorResponse = {
   credentials_checked: number;
   credentials_revoked: number;
   credentials_errored: number;
+  scanned?: number;
+  processed?: number;
+  skipped?: number;
+  failed?: number;
+  limit?: number | null;
   deploy_mode: string;
   timestamp: string;
 };
@@ -185,10 +203,26 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    public readonly body?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
   }
+}
+
+function apiErrorMessage(body: unknown, fallback: string) {
+  if (!body || typeof body !== "object") return fallback;
+  const record = body as Record<string, unknown>;
+  const detail = record.detail;
+  if (detail && typeof detail === "object") {
+    const detailRecord = detail as Record<string, unknown>;
+    if (typeof detailRecord.message === "string") return detailRecord.message;
+    if (typeof detailRecord.error === "string") return detailRecord.error;
+  }
+  if (typeof detail === "string") return detail;
+  if (typeof record.message === "string") return record.message;
+  if (typeof record.error === "string") return record.error;
+  return fallback;
 }
 
 // ─── Fetch helper ────────────────────────────────────────────────────────────
@@ -208,13 +242,14 @@ async function request<T>(
 
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
+    let body: unknown;
     try {
-      const body = await res.json();
-      message = body?.detail ?? body?.message ?? body?.error ?? message;
+      body = await res.json();
+      message = apiErrorMessage(body, message);
     } catch {
       // ignore parse error
     }
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, body);
   }
 
   return res.json() as Promise<T>;
@@ -235,6 +270,10 @@ export async function fetchHealth(): Promise<HealthResponse> {
 
 export async function fetchConfig(): Promise<ConfigResponse> {
   return request<ConfigResponse>("/api/config");
+}
+
+export async function fetchConfigStatus(): Promise<SystemStatusResponse> {
+  return request<SystemStatusResponse>("/api/config/status");
 }
 
 export async function fetchOracleHistory(walletAddress: string): Promise<OracleHistoryResponse> {

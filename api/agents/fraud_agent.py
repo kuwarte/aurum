@@ -29,6 +29,7 @@ def fraud_agent(state: PipelineState) -> PipelineState:
     if result:
         return {
             **state,
+            **AgentLLM.status_fields(state, fallback_used=False),
             "fraud_score": result.get("fraud_score", 0.0),
             "fraud_flags": result.get("fraud_flags", []),
             "fraud_reasoning": result.get("reasoning", ""),
@@ -54,6 +55,7 @@ def fraud_agent(state: PipelineState) -> PipelineState:
     
     return {
         **state,
+        **AgentLLM.status_fields(state, fallback_used=True),
         "fraud_score": min(fraud_score, 1.0),
         "fraud_flags": fraud_flags,
         "fraud_reasoning": "Fallback rule-based analysis",

@@ -126,3 +126,104 @@ Run the full migration file in Supabase SQL editor before relying on x402 nonce 
 - API test/demo scripts now load `CASPER_PUBLIC_KEY` first, then fall back to `CASPER_ACCOUNT_HASH`.
 - If neither wallet env var is configured, scripts raise a clear setup error instead of using an invalid hardcoded wallet.
 - No secrets, private keys, PEM contents, API keys, or real wallet values were committed.
+
+## Demo Reliability Updates
+
+### Summary
+
+- Added configurable fast LLM fallback behavior for local demos.
+- Added `/assess` response metadata for source, LLM status, fallback use, deploy mode, and CSPR.cloud mode.
+- Added safe `GET /config/status` runtime flags for frontend diagnostics.
+- Improved `POST /cron/monitor` with `limit`, `dry_run`, wallet validation skips, and summary counts.
+- Improved dashboard and lending demo states for cached results, fallback scoring, mock deploys, rate limits, invalid wallets, API downtime, and empty loan offers.
+
+### Files Changed
+
+- `.env.example`
+- `api/.env.example`
+- `api/agents/utils/llm_utils.py`
+- `api/agents/attestation_agent.py`
+- `api/agents/fraud_agent.py`
+- `api/agents/lending_agent.py`
+- `api/agents/monitoring_agent.py`
+- `api/agents/risk_agent.py`
+- `api/main.py`
+- `api/routers/assess.py`
+- `api/routers/cron.py`
+- `api/docs/INTEGRATION_CHANGELOG.md`
+- `web/app/api/config/status/route.ts`
+- `web/app/agents/page.tsx`
+- `web/app/dashboard/page.tsx`
+- `web/app/globals.css`
+- `web/app/history/page.tsx`
+- `web/app/lending-demo/page.tsx`
+- `web/app/oracle-demo/page.tsx`
+- `web/lib/api-client.ts`
+- `web/lib/use-assessment.tsx`
+
+### Security Updates
+
+- LLM retry logs now avoid printing exception payloads or API key values.
+- `GET /config/status` returns only safe booleans and runtime mode names, not secrets or configured secret values.
+- Cron monitor now validates stored wallet addresses before running the pipeline or touching CSPR.cloud-dependent code.
+- No `.env`, PEM, private key, API key, or local secret values were committed.
+
+### API Changes
+
+- `POST /assess` now includes `source`, `llm_status`, `fallback_used`, and `cspr_cloud_mode`.
+- `GET /config/status` returns `deploy_mode`, `cspr_cloud_mode`, `x402_mode`, `cron_secret_configured`, and `contracts_configured`.
+- `POST /cron/monitor` accepts `limit` and `dry_run` through query params or JSON body.
+- `POST /cron/monitor` response now includes `scanned`, `processed`, `skipped`, `failed`, and `limit` while preserving existing count fields.
+
+### Frontend Changes
+
+- Dashboard maps invalid wallet 422, assessment 429, and backend 503 failures to explicit demo-safe copy.
+- Dashboard shows cached history, fallback scoring, mock deploy, empty loan offer, and safe system status states.
+- Lending demo now distinguishes no-wallet, loading, cached, fresh/demo, no-offers, fallback, and mock deploy states.
+- Added frontend proxy route for `/api/config/status`.
+
+### Database / Migration Changes
+
+- No new migration was added in this update.
+
+### Environment Variables Added Or Required
+
+- `LLM_FAST_FALLBACK`: optional, default `false`; set `true` locally for immediate fallback after any LLM failure.
+- `LLM_MAX_RETRIES`: optional, default `2`; recommended local demo override is `0`.
+- `LLM_RETRY_DELAY_SECONDS`: optional, default `1`; recommended local demo override is `0`.
+
+Recommended local demo overrides:
+
+```env
+LLM_FAST_FALLBACK=true
+LLM_MAX_RETRIES=0
+LLM_RETRY_DELAY_SECONDS=0
+```
+
+### Manual Steps Still Required
+
+- Configure real Groq keys for LLM-backed explanations, or use the fast fallback env values above for demos.
+- Keep `AURUM_DEPLOY_MODE=mock` unless a live Casper deploy is explicitly intended and approved.
+- Keep `X402_MODE=mock` until real payment proof verification is completed and tested.
+
+### Tests / Checks Run
+
+- `npm.cmd run lint` in `web/`: passed.
+- `npm.cmd run build` in `web/`: passed. Build includes `/api/config/status` and `/lending-demo`.
+- `curl.exe --max-time 5 http://127.0.0.1:8000/health`: passed against the locally running API.
+- `curl.exe --max-time 5 http://127.0.0.1:8000/config/status`: passed and returned safe runtime flags only.
+- `POST /assess` with `wallet_address=0xtest123abc`: returned HTTP 422 as expected.
+- `POST /cron/monitor?dry_run=true` without cron auth: returned HTTP 401 as expected.
+- `python --version`, `py -3 --version`, and `python3 --version`: could not run because each launcher failed with `A specified logon session does not exist`.
+- `api/.venv/bin/python -m compileall`, `api/.venv/bin/python test_scripts/test_agents.py`, and `api/.venv/bin/python test_scripts/test_pipeline.py`: could not run because Windows reported `Access is denied` for the Unix-style venv executable.
+- Secret checks: `.env`, `api/.env`, `web/.env.local`, and `keys/` files are ignored and unchanged. No PEM/private key content was printed.
+
+### Known Limitations
+
+- Fast fallback makes demos responsive but uses rule-based text/recommendations when LLM calls are unavailable.
+- `GET /config/status` reports safe runtime flags only; it does not prove every downstream provider credential is valid.
+
+### What Other Developers Need To Know
+
+- The new frontend status card is diagnostic only and must not be expanded to expose configured secret values.
+- `fallback_used=true` means at least one LLM-backed agent used rule-based fallback in the current assessment.

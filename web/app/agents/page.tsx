@@ -129,7 +129,7 @@ export default function AgentsPage() {
           <article className="dash-page-intro">
             <h1 className="dash-page-title">Agent Pipeline</h1>
             <p className="dash-page-caption">
-              Follow the specialized agents that power Aurum's credit layer, from
+              Follow the specialized agents that power Aurum&apos;s credit layer, from
               behavioral scoring and fraud review to attestation, monitoring, and
               lender routing.
             </p>

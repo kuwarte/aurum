@@ -89,7 +89,7 @@ export default function OracleDemoPage() {
             <h1 className="dash-page-title">Oracle Demo</h1>
             <p className="dash-page-caption">
               Simulate how any DeFi lending protocol queries Aurum for a
-              wallet's credit profile. The oracle is x402-gated — the protocol
+              wallet&apos;s credit profile. The oracle is x402-gated — the protocol
               pays 1.5 CSPR, Aurum returns a verified score. No accounts, no
               human underwriters.
             </p>
@@ -211,7 +211,7 @@ export default function OracleDemoPage() {
 
               {step.status === "idle" && (
                 <p className="chart-note">
-                  Click "Step 1" to begin the oracle demo. The protocol first
+                  Click &quot;Step 1&quot; to begin the oracle demo. The protocol first
                   receives a 402 with payment requirements, then sends a proof
                   to unlock the credit profile.
                 </p>
@@ -285,7 +285,7 @@ export default function OracleDemoPage() {
               <h2>How the x402 oracle works</h2>
               <p className="chart-note">
                 Aurum is a credit bureau, not a lender. The oracle is the API
-                that lending protocols use to query Aurum's data. The x402
+                that lending protocols use to query Aurum&apos;s data. The x402
                 protocol enforces a per-query micropayment so Aurum earns
                 revenue without subscriptions or accounts.
               </p>

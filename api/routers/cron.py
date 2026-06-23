@@ -16,13 +16,13 @@ import os
 import time
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from db.supabase import get_client
 from pipeline.graph import pipeline
 from casper.deploy_submitter import load_submitter_from_env
-from casper.contracts import load_contracts_from_env
+from validation import normalize_wallet_address
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cron", tags=["cron"])
@@ -55,6 +55,9 @@ def _get_deployer_account() -> str:
 
 @router.post("/monitor")
 async def monitor_credentials(
+    request: Request,
+    limit: int | None = Query(default=None, ge=1, le=500),
+    dry_run: bool = Query(default=False),
     x_cron_secret: str | None = Header(default=None, alias="X-Cron-Secret"),
     authorization: str | None = Header(default=None),
 ):
@@ -91,9 +94,31 @@ async def monitor_credentials(
             },
         )
 
+    if request.headers.get("content-type", "").startswith("application/json"):
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+
+        if isinstance(body, dict):
+            if body.get("limit") is not None and limit is None:
+                try:
+                    limit = max(1, min(int(body["limit"]), 500))
+                except (TypeError, ValueError):
+                    raise HTTPException(
+                        status_code=422,
+                        detail={
+                            "error": "invalid_limit",
+                            "message": "limit must be an integer between 1 and 500.",
+                        },
+                    )
+            if body.get("dry_run") is not None:
+                dry_run = str(body["dry_run"]).lower() in ("1", "true", "yes")
+
     checked = 0
     revoked = 0
     errored = 0
+    skipped = 0
 
     # 1. Fetch all active credentials from Supabase
     try:
@@ -117,17 +142,40 @@ async def monitor_credentials(
 
     logger.info("monitor_credentials: found %d active credentials", len(active_records))
 
+    scanned = len(active_records)
+    valid_records = []
+    for record in active_records:
+        try:
+            wallet_address = normalize_wallet_address(record.get("wallet_address"))
+        except HTTPException:
+            skipped += 1
+            continue
+
+        valid_records.append({**record, "wallet_address": wallet_address})
+        if limit is not None and len(valid_records) >= limit:
+            break
+
+    if dry_run:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        return {
+            "status": "dry_run",
+            "scanned": scanned,
+            "processed": 0,
+            "skipped": skipped,
+            "failed": 0,
+            "limit": limit,
+            "deploy_mode": _DEPLOY_MODE,
+            "timestamp": timestamp,
+        }
+
     # Load submitter once — reused for all revocations
     submitter = _get_submitter()
     credit_registry_hash = _get_credit_registry_hash()
     deployer_account = _get_deployer_account()
 
     # 2. Re-score each wallet sequentially
-    for record in active_records:
+    for record in valid_records:
         wallet_address = record.get("wallet_address")
-        if not wallet_address:
-            continue
-
         checked += 1
         try:
             result = pipeline.invoke({"wallet_address": wallet_address})
@@ -203,6 +251,11 @@ async def monitor_credentials(
         "credentials_checked": checked,
         "credentials_revoked": revoked,
         "credentials_errored": errored,
+        "scanned": scanned,
+        "processed": checked,
+        "skipped": skipped,
+        "failed": errored,
+        "limit": limit,
         "deploy_mode": _DEPLOY_MODE,
         "timestamp": timestamp,
     }

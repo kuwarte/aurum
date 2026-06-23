@@ -33,10 +33,12 @@ def monitoring_agent(state: PipelineState) -> PipelineState:
         credential_active = decision.get("credential_active", True)
         monitoring_reasoning = decision.get("reasoning", "Standard monitoring.")
         monitoring_action = decision.get("action", "maintain")
+        llm_fields = AgentLLM.status_fields(state, fallback_used=False)
     else:
         credential_active = True
         monitoring_reasoning = "Rule-based monitoring"
         monitoring_action = "maintain"
+        llm_fields = AgentLLM.status_fields(state, fallback_used=True)
         
         if state.get("fraud_score", 0) > 0.5:
             credential_active = False
@@ -45,6 +47,7 @@ def monitoring_agent(state: PipelineState) -> PipelineState:
     
     return {
         **state,
+        **llm_fields,
         "credential_active": credential_active,
         "monitoring_reasoning": monitoring_reasoning,
         "monitoring_action": monitoring_action,

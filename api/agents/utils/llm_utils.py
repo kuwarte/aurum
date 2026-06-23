@@ -3,17 +3,22 @@ LLM Utilities for Aurum Agents.
 Provides shared LLM initialization and prompt management to eliminate redundancy.
 """
 
-import os
 import json
+import logging
+import os
+import time
 from typing import Dict, Any, Optional
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage
+
+logger = logging.getLogger(__name__)
 
 
 class AgentLLM:
     """Shared LLM instance manager for agents."""
     
     _instances: Dict[str, ChatGroq] = {}
+    _last_status: str = "success"
     
     @classmethod
     def get_llm(cls, key_name: str = "GROQ_API_KEY") -> ChatGroq:
@@ -32,7 +37,7 @@ class AgentLLM:
         content = response.content.strip()
 
         if not content:
-            print("LLM returned empty response")
+            logger.warning("LLM returned an empty response; using fallback path.")
             return None
 
         # Strip markdown code fences: ```json ... ``` or ``` ... ```
@@ -62,6 +67,8 @@ class AgentLLM:
                 except json.JSONDecodeError:
                     pass
 
+        content = "<redacted>"
+
         print(f"JSON parsing failed — could not extract JSON from response: {content[:200]!r}")
         return None
     
@@ -83,6 +90,101 @@ class AgentLLM:
                     print(f"LLM invocation attempt {attempt + 1} failed: {e} — retrying")
                 else:
                     print(f"LLM invocation failed after {retries + 1} attempts: {e}")
+        return None
+
+    @classmethod
+    def get_llm(cls, key_name: str = "GROQ_API_KEY") -> Optional[ChatGroq]:
+        """Get or create LLM instance for specified API key."""
+        api_key = os.getenv(key_name)
+        if not api_key:
+            cls._last_status = "unavailable"
+            logger.warning("LLM key %s is not configured; using fallback path.", key_name)
+            return None
+
+        if key_name not in cls._instances:
+            cls._instances[key_name] = ChatGroq(
+                model="llama-3.3-70b-versatile",
+                temperature=0,
+                api_key=api_key,
+            )
+        return cls._instances[key_name]
+
+    @classmethod
+    def get_last_status(cls) -> str:
+        """Return the last LLM invocation status for API metadata."""
+        return cls._last_status
+
+    @classmethod
+    def status_fields(cls, state: Dict[str, Any], fallback_used: bool) -> Dict[str, Any]:
+        """Merge the latest LLM status into pipeline state fields."""
+        previous_status = state.get("llm_status", "success")
+        latest_status = cls.get_last_status()
+        fallback = bool(state.get("fallback_used")) or fallback_used
+
+        if fallback:
+            if "rate_limited" in (previous_status, latest_status):
+                status = "rate_limited"
+            elif "unavailable" in (previous_status, latest_status):
+                status = "unavailable"
+            else:
+                status = "fallback"
+        else:
+            status = "success"
+
+        return {"llm_status": status, "fallback_used": fallback}
+
+    @staticmethod
+    def invoke_llm(llm: Optional[ChatGroq], prompt: str, retries: int = 2) -> Optional[Dict[str, Any]]:
+        """Invoke LLM and parse JSON response. Retries on transient failures."""
+        if llm is None:
+            AgentLLM._last_status = "unavailable"
+            return None
+
+        fast_fallback = os.getenv("LLM_FAST_FALLBACK", "false").lower() in ("1", "true", "yes")
+        try:
+            configured_retries = int(os.getenv("LLM_MAX_RETRIES", str(retries)))
+        except ValueError:
+            configured_retries = retries
+
+        try:
+            retry_delay = float(os.getenv("LLM_RETRY_DELAY_SECONDS", "1"))
+        except ValueError:
+            retry_delay = 1.0
+
+        max_retries = 0 if fast_fallback else max(0, configured_retries)
+
+        for attempt in range(max_retries + 1):
+            try:
+                response = llm.invoke([HumanMessage(content=prompt)])
+                result = AgentLLM.parse_json_response(response)
+                if result is not None:
+                    AgentLLM._last_status = "success"
+                    return result
+
+                AgentLLM._last_status = "fallback"
+                return None
+            except Exception as exc:
+                error_text = str(exc).lower()
+                AgentLLM._last_status = (
+                    "rate_limited"
+                    if "rate" in error_text or "429" in error_text
+                    else "unavailable"
+                )
+                if attempt < max_retries:
+                    logger.warning(
+                        "LLM invocation attempt %s failed with %s; retrying.",
+                        attempt + 1,
+                        type(exc).__name__,
+                    )
+                    if retry_delay > 0:
+                        time.sleep(retry_delay)
+                else:
+                    logger.warning(
+                        "LLM invocation failed after %s attempt(s) with %s; using fallback path.",
+                        max_retries + 1,
+                        type(exc).__name__,
+                    )
+
         return None
 
 

@@ -45,11 +45,14 @@ def lending_agent(state: PipelineState) -> PipelineState:
     
     if result:
         lending_recommendation = result.get("recommendation", "Standard loan offers available.")
+        llm_fields = AgentLLM.status_fields(state, fallback_used=False)
     else:
         lending_recommendation = f"Tier {tier} offers available at market rates."
+        llm_fields = AgentLLM.status_fields(state, fallback_used=True)
     
     return {
         **state,
+        **llm_fields,
         "loan_offers": offers,
         "lending_recommendation": lending_recommendation
     }

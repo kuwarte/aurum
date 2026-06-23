@@ -65,12 +65,15 @@ def risk_agent(state: PipelineState) -> PipelineState:
         ai_warnings = analysis.get("early_warnings", [])
         risk_analysis = analysis.get("risk_analysis", "")
         all_warnings = list(set(early_warning_flags + ai_warnings))
+        llm_fields = AgentLLM.status_fields(state, fallback_used=False)
     else:
         all_warnings = early_warning_flags
         risk_analysis = "Rule-based analysis only"
+        llm_fields = AgentLLM.status_fields(state, fallback_used=True)
     
     return {
         **state,
+        **llm_fields,
         "risk_tier": tier,
         "default_prob_30d": round(default_prob_30d, 3),
         "default_prob_60d": round(default_prob_60d, 3),

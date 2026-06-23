@@ -7,7 +7,13 @@ import { useAppPreferences } from "@/lib/app-preferences";
 import { formatCurrencyWithEstimate } from "@/lib/currency";
 import { useWalletSession } from "@/lib/use-wallet-session";
 import { useAssessment } from "@/lib/use-assessment";
-import type { RiskTier, LoanOffer, ShapBreakdown } from "@/lib/api-client";
+import {
+  fetchConfigStatus,
+  type RiskTier,
+  type LoanOffer,
+  type ShapBreakdown,
+  type SystemStatusResponse,
+} from "@/lib/api-client";
 
 // ─── Static agent pipeline display (status shown from monitoring) ─────────────
 
@@ -73,8 +79,33 @@ export default function DashboardPage() {
     useAssessment();
 
   const [barsAnimated, setBarsAnimated] = useState(false);
+  const [systemStatus, setSystemStatus] = useState<SystemStatusResponse | null>(null);
+  const [systemStatusError, setSystemStatusError] = useState<string | null>(null);
   const ringRef = useRef<SVGCircleElement>(null);
   const autoCheckedWalletRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchConfigStatus()
+      .then((status) => {
+        if (!cancelled) {
+          setSystemStatus(status);
+          setSystemStatusError(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSystemStatus(null);
+          setSystemStatusError(
+            "Aurum API is unavailable. Make sure the backend is running on the configured API URL.",
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // On connect, check cached oracle history before running the full pipeline.
   useEffect(() => {
@@ -198,6 +229,24 @@ export default function DashboardPage() {
                   Retry
                 </button>
               )}
+            </div>
+          )}
+
+          {systemStatusError && !isError && (
+            <div className="dash-error-banner" role="alert">
+              <span>{systemStatusError}</span>
+            </div>
+          )}
+
+          {assessmentSource === "cache" && (
+            <div className="dash-info-banner">
+              Loaded from cached assessment history. Use Re-assess to run a fresh check.
+            </div>
+          )}
+
+          {assessment?.fallback_used && (
+            <div className="dash-info-banner">
+              AI explanation is temporarily unavailable. Fallback scoring rules were used.
             </div>
           )}
 
@@ -421,7 +470,7 @@ export default function DashboardPage() {
                     )}
                     {!isLoading && loanOffers.length === 0 && (
                       <div className="dash-offer-placeholder">
-                        {connected ? "No offers available for your tier" : "Connect wallet to see offers"}
+                        {connected ? "No eligible loan offers for this wallet yet." : "Connect wallet to see offers"}
                       </div>
                     )}
                     {loanOffers.map((offer) => (
@@ -440,6 +489,50 @@ export default function DashboardPage() {
                         <span className="dash-offer-rate">{offer.rate}</span>
                       </Link>
                     ))}
+                  </div>
+                </article>
+
+                <article className="dash-activity-panel aurora-border">
+                  <div className="dash-panel-head">
+                    <span className="dash-panel-title">System status</span>
+                    <span className={`mini-badge${systemStatus ? " green" : " gold"}`}>
+                      {systemStatus ? "API connected" : "API unavailable"}
+                    </span>
+                  </div>
+
+                  <div className="score-bars" style={{ marginTop: "1rem" }}>
+                    <div className="score-row">
+                      <header>
+                        <strong>Assessment endpoint</strong>
+                        <span className="agent-subtitle">
+                          {systemStatus ? "reachable" : "unreachable"}
+                        </span>
+                      </header>
+                    </div>
+                    <div className="score-row">
+                      <header>
+                        <strong>Runtime modes</strong>
+                        <span className="agent-subtitle">
+                          deploy:{systemStatus?.deploy_mode ?? "unknown"} | cspr:{systemStatus?.cspr_cloud_mode ?? "unknown"} | x402:{systemStatus?.x402_mode ?? "unknown"}
+                        </span>
+                      </header>
+                    </div>
+                    <div className="score-row">
+                      <header>
+                        <strong>Cron secret</strong>
+                        <span className="agent-subtitle">
+                          {systemStatus?.cron_secret_configured ? "configured" : "not configured"}
+                        </span>
+                      </header>
+                    </div>
+                    <div className="score-row">
+                      <header>
+                        <strong>Cached history</strong>
+                        <span className="agent-subtitle">
+                          {assessmentSource === "cache" ? "available" : "not loaded"}
+                        </span>
+                      </header>
+                    </div>
                   </div>
                 </article>
 
