@@ -181,6 +181,45 @@
     returns structured success/failure without printing secrets.
     File: api/casper/client.py
 
+[x] ADD LLM FAST FALLBACK CONTROLS
+    DONE. Added LLM_FAST_FALLBACK, LLM_MAX_RETRIES, and
+    LLM_RETRY_DELAY_SECONDS env controls. Fast fallback mode skips retries and
+    immediately uses rule-based agent fallback when LLM keys, rate limits,
+    timeouts, or invocation failures occur.
+    Files: api/agents/utils/llm_utils.py, .env.example, api/.env.example
+
+[x] ADD /assess DEMO METADATA
+    DONE. /assess now includes source, llm_status, fallback_used,
+    deploy_mode, and cspr_cloud_mode while preserving existing response fields.
+    Files: api/routers/assess.py, api/agents/*.py, web/lib/api-client.ts
+
+[x] ADD SAFE FRONTEND STATUS ENDPOINT
+    DONE. Added GET /config/status and /api/config/status proxy. The endpoint
+    returns only safe runtime modes and booleans such as cron secret configured
+    and contracts configured; it does not expose secret values.
+    Files: api/main.py, web/app/api/config/status/route.ts,
+           web/lib/api-client.ts, web/app/dashboard/page.tsx
+
+[x] IMPROVE CRON MONITOR DEMO SAFETY
+    DONE. POST /cron/monitor supports limit and dry_run, validates stored
+    wallet addresses before pipeline execution, skips malformed wallets, and
+    returns scanned/processed/skipped/failed counts.
+    File: api/routers/cron.py
+
+[x] IMPROVE FRONTEND DEMO UX STATES
+    DONE. Dashboard and lending demo now show safe messages for invalid wallet
+    input, backend unavailable, rate limits, cached history, fallback scoring,
+    loading/no-wallet states, and empty loan offers. Removed the visible mock
+    deploy badge per latest UI request.
+    Files: web/app/dashboard/page.tsx, web/app/lending-demo/page.tsx,
+           web/lib/use-assessment.tsx, web/app/globals.css
+
+[x] FIX FRONTEND LINT WARNINGS IN DEMO PAGES
+    DONE. Fixed unescaped JSX entities and hook-related lint issue in the
+    previously failing frontend files. npm.cmd run lint now passes.
+    Files: web/app/agents/page.tsx, web/app/history/page.tsx,
+           web/app/oracle-demo/page.tsx
+
 [ ] SWITCH X402_MODE TO LIVE
     MANUAL / BLOCKED BY REAL PAYMENT TEST.
     X402_MODE=mock currently. Change to live once real CSPR payment test passes.
@@ -286,6 +325,13 @@
 [x] Implement CasperClient.get_cspr_balance() via casper-client query-balance
 [x] Hydrate frontend assessment context from /oracle/history before /assess
 [x] Add /lending-demo protocol-paid x402 underwriting demo
+[x] Add LLM fast fallback env controls for local demo reliability
+[x] Add /assess source, LLM status, fallback, deploy, and CSPR.cloud metadata
+[x] Add safe /config/status API and frontend proxy/status card
+[x] Add /cron/monitor limit, dry_run, invalid wallet skips, and summary counts
+[x] Improve dashboard and lending demo error/loading/cache/fallback/no-offer states
+[x] Fix frontend lint warnings in agents, history, and oracle-demo pages
+[x] Remove visible "Demo Mode: Mock Deploys Enabled" badge from frontend
 [x] Update api/docs/TODO, WORKFLOW, AGENT_PIPELINE (this update)
 
 
