@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
+from wallet_env import get_test_wallet
 
 print("=" * 65)
 print("CASPER LIVE DEPLOY TEST")
@@ -40,7 +41,7 @@ print(f"  OK: {submitter.secret_key_path}")
 print("\n[3] Submitting issue_credit_score to CreditRegistry (testnet)...")
 # Use the actual callable contract hash, not the package hash
 credit_registry = os.getenv("CREDIT_REGISTRY_CONTRACT_HASH") or os.getenv("CREDIT_REGISTRY_HASH", "")
-test_wallet = os.getenv("CASPER_ACCOUNT_HASH", "")
+test_wallet = get_test_wallet()
 now_ts = int(time.time())
 expiry_ts = now_ts + (90 * 24 * 3600)
 

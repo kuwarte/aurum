@@ -27,7 +27,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from decimal import Decimal, InvalidOperation
 from enum import Enum
-from typing import Any, Dict, Optional, Set
+import re
+from typing import Any, Dict, Optional
 import os
 import time
 
@@ -56,6 +57,63 @@ class X402PaymentProof:
     signature: str
     payment_reference: str
 
+    @classmethod
+    def from_dict(cls, raw: Dict[str, Any]) -> "X402PaymentProof":
+        """Build a proof from untrusted JSON with clean validation errors."""
+        if not isinstance(raw, dict):
+            raise X402VerificationError("x402 proof must be a JSON object")
+
+        required_fields = (
+            "payer_account",
+            "receiver_account",
+            "amount_cspr",
+            "nonce",
+            "deadline_epoch_seconds",
+            "network",
+            "signature",
+        )
+        missing = [field for field in required_fields if field not in raw]
+        if missing:
+            raise X402VerificationError(
+                f"x402 proof missing required field(s): {', '.join(missing)}"
+            )
+
+        payer_account = _require_non_empty_string(raw["payer_account"], "payer_account")
+        receiver_account = _require_non_empty_string(
+            raw["receiver_account"], "receiver_account"
+        )
+        nonce = _require_non_empty_string(raw["nonce"], "nonce")
+        network = _require_non_empty_string(raw["network"], "network")
+        signature = _require_non_empty_string(raw["signature"], "signature")
+        payment_reference = str(raw.get("payment_reference", "")).strip()
+
+        if len(nonce) > 128:
+            raise X402VerificationError("x402 nonce is too long")
+        if len(signature) > 512:
+            raise X402VerificationError("x402 signature is too long")
+        if not _is_account_identifier(payer_account):
+            raise X402VerificationError("x402 payer_account is not a Casper account identifier")
+        if not _is_account_identifier(receiver_account):
+            raise X402VerificationError("x402 receiver_account is not a Casper account identifier")
+
+        try:
+            deadline = int(raw["deadline_epoch_seconds"])
+        except (TypeError, ValueError) as exc:
+            raise X402VerificationError(
+                "x402 deadline_epoch_seconds must be an integer"
+            ) from exc
+
+        return cls(
+            payer_account=payer_account,
+            receiver_account=receiver_account,
+            amount_cspr=str(raw["amount_cspr"]),
+            nonce=nonce,
+            deadline_epoch_seconds=deadline,
+            network=network,
+            signature=signature,
+            payment_reference=payment_reference,
+        )
+
 
 @dataclass(frozen=True)
 class X402VerifierConfig:
@@ -73,7 +131,6 @@ class X402Verifier:
 
     def __init__(self, config: X402VerifierConfig) -> None:
         self.config = config
-        self._used_nonces: Set[str] = set()
         self._submitter = None  # lazy-loaded in live mode
 
     def _get_submitter(self):
@@ -137,12 +194,16 @@ class X402Verifier:
             raise X402VerificationError("x402 receiver mismatch")
         if proof.network != self.config.network:
             raise X402VerificationError("x402 network mismatch")
-        if proof.nonce in self._used_nonces:
-            raise X402VerificationError("x402 nonce already used")
+        if not proof.signature:
+            raise X402VerificationError("x402 proof signature is required")
 
         amount = _parse_decimal(proof.amount_cspr)
         if amount < self.config.query_price_cspr:
             raise X402VerificationError("x402 payment below required query price")
+
+        # TODO: verify that `signature` is an Ed25519/Secp256k1 signature over a
+        # canonical proof payload. The missing requirement is an agreed canonical
+        # signing message and curve encoding from the wallet/facilitator flow.
 
         # Live mode: verify the transfer actually landed on-chain
         if self.config.mode == X402Mode.LIVE:
@@ -163,8 +224,7 @@ class X402Verifier:
                     f"x402 on-chain transfer not found: {chain_check.get('error')}"
                 )
 
-        self._used_nonces.add(proof.nonce)
-        return {
+        verification = {
             "mode": self.config.mode.value,
             "verified": True,
             "payer_account": proof.payer_account,
@@ -173,6 +233,8 @@ class X402Verifier:
             "nonce": proof.nonce,
             "payment_reference": proof.payment_reference,
         }
+        self._consume_nonce(proof, verification)
+        return verification
 
     def dump_config(self) -> Dict[str, Any]:
         """Return a JSON-safe view of the verifier configuration."""
@@ -180,6 +242,27 @@ class X402Verifier:
         data["mode"] = self.config.mode.value
         data["query_price_cspr"] = str(self.config.query_price_cspr)
         return data
+
+    def _consume_nonce(
+        self,
+        proof: X402PaymentProof,
+        verification: Dict[str, Any],
+    ) -> None:
+        try:
+            from db.supabase import consume_x402_nonce
+
+            consume_x402_nonce(
+                nonce=proof.nonce,
+                proof_metadata={
+                    **verification,
+                    "network": proof.network,
+                },
+                expires_at=proof.deadline_epoch_seconds,
+            )
+        except Exception as exc:
+            raise X402VerificationError(
+                "x402 nonce could not be persisted or was already used"
+            ) from exc
 
 
 def load_x402_verifier_from_env() -> X402Verifier:
@@ -217,3 +300,17 @@ def _parse_decimal(raw_value: str) -> Decimal:
     if value <= 0:
         raise X402VerificationError("x402 payment amount must be positive")
     return value
+
+
+_ACCOUNT_HASH_RE = re.compile(r"^(account-hash-)?[0-9a-fA-F]{64}$")
+_PUBLIC_KEY_RE = re.compile(r"^0[12][0-9a-fA-F]{64,66}$")
+
+
+def _is_account_identifier(value: str) -> bool:
+    return bool(_ACCOUNT_HASH_RE.fullmatch(value) or _PUBLIC_KEY_RE.fullmatch(value))
+
+
+def _require_non_empty_string(value: Any, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise X402VerificationError(f"x402 {field_name} must be a non-empty string")
+    return value.strip()

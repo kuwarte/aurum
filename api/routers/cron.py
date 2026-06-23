@@ -16,7 +16,7 @@ import os
 import time
 from datetime import datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import JSONResponse
 
 from db.supabase import get_client
@@ -54,7 +54,10 @@ def _get_deployer_account() -> str:
 
 
 @router.post("/monitor")
-async def monitor_credentials():
+async def monitor_credentials(
+    x_cron_secret: str | None = Header(default=None, alias="X-Cron-Secret"),
+    authorization: str | None = Header(default=None),
+):
     """
     Re-score all active credentials and revoke those that breach thresholds.
 
@@ -64,6 +67,30 @@ async def monitor_credentials():
         credentials_errored  – number of wallets that hit errors
         timestamp            – UTC ISO-8601 completion time
     """
+    expected_secret = os.getenv("CRON_SECRET")
+    if not expected_secret:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "cron_secret_not_configured",
+                "message": "CRON_SECRET must be configured before cron monitoring can run.",
+            },
+        )
+
+    bearer_secret = None
+    if authorization and authorization.lower().startswith("bearer "):
+        bearer_secret = authorization[7:].strip()
+
+    supplied_secret = x_cron_secret or bearer_secret
+    if supplied_secret != expected_secret:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "unauthorized",
+                "message": "Invalid or missing cron secret.",
+            },
+        )
+
     checked = 0
     revoked = 0
     errored = 0

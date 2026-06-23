@@ -7,6 +7,8 @@ import requests
 import json
 import time
 
+from wallet_env import get_test_wallet
+
 
 API_BASE = "http://localhost:8000"
 
@@ -49,7 +51,7 @@ def test_assess():
     print("TEST 3: Credit Assessment (Main Frontend Call)")
     print("="*60)
     
-    test_wallet = "account-hash-0202d13fae0e37e3587427e74641476ed2d90d17874c39ce4f55e805daa5dd14a9bd"
+    test_wallet = get_test_wallet()
     
     payload = {
         "wallet_address": test_wallet

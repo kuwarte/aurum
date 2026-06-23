@@ -9,11 +9,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
 
-BARE_ACCOUNT_HASH = "e1b7c78127d7b8b652ec00dd074a74bd47b5a9eebe1fd94cec3bb3e2ce7d8dad"
+from wallet_env import get_test_wallet
+
+TEST_WALLET = get_test_wallet()
 
 print("=" * 65)
 print("AURUM END-TO-END PIPELINE TEST")
-print(f"Wallet  : {BARE_ACCOUNT_HASH}")
+print(f"Wallet  : {TEST_WALLET}")
 print(f"CSPR mode   : {os.getenv('CSPR_CLOUD_MODE')}")
 print(f"Deploy mode : {os.getenv('AURUM_DEPLOY_MODE')}")
 print(f"X402 mode   : {os.getenv('X402_MODE')}")
@@ -22,7 +24,7 @@ print("=" * 65)
 from pipeline.graph import pipeline
 
 try:
-    result = pipeline.invoke({"wallet_address": BARE_ACCOUNT_HASH})
+    result = pipeline.invoke({"wallet_address": TEST_WALLET})
     print()
     print("[ CREDIT AGENT ]")
     print(f"  credit_score      : {result.get('credit_score')}")

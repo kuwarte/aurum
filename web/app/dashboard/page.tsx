@@ -59,18 +59,39 @@ export default function DashboardPage() {
   const {
     preferences: { advancedSignals, currency, refreshWindow, showFiatEstimate },
   } = useAppPreferences();
-  const { assessment, isLoading, isError, error, assess, isIdle } =
+  const {
+    assessment,
+    assessmentSource,
+    isLoading,
+    isCheckingCache,
+    isError,
+    error,
+    assess,
+    hydrateFromHistory,
+    isIdle,
+  } =
     useAssessment();
 
   const [barsAnimated, setBarsAnimated] = useState(false);
   const ringRef = useRef<SVGCircleElement>(null);
+  const autoCheckedWalletRef = useRef<string | null>(null);
 
-  // Auto-assess when wallet connects and we have no data yet
+  // On connect, check cached oracle history before running the full pipeline.
   useEffect(() => {
-    if (connected && address && isIdle) {
-      void assess(address);
+    if (
+      connected &&
+      address &&
+      isIdle &&
+      autoCheckedWalletRef.current !== address
+    ) {
+      autoCheckedWalletRef.current = address;
+      void hydrateFromHistory(address).then((foundCachedAssessment) => {
+        if (!foundCachedAssessment) {
+          void assess(address);
+        }
+      });
     }
-  }, [connected, address, isIdle, assess]);
+  }, [connected, address, isIdle, hydrateFromHistory, assess]);
 
   // Animate ring whenever score data arrives
   const score = assessment?.score ?? 0;
@@ -100,7 +121,15 @@ export default function DashboardPage() {
     {
       label: "Credit score",
       value: assessment ? String(assessment.score) : "—",
-      delta: assessment ? "from live assessment" : isLoading ? "Running pipeline…" : "Connect wallet to score",
+      delta: assessment
+        ? assessmentSource === "cache"
+          ? "loaded from history"
+          : "from live assessment"
+        : isCheckingCache
+          ? "Checking history..."
+          : isLoading
+            ? "Running pipeline..."
+            : "Connect wallet to score",
       deltaUp: assessment ? true : null,
       tone: "gold",
     },
@@ -200,7 +229,7 @@ export default function DashboardPage() {
                   })()
                 ) : (
                   <div className={`dash-stat-value${stat.tone ? ` ${stat.tone}` : ""}`}>
-                    {isLoading ? <span className="dash-stat-loading">…</span> : stat.value}
+                    {isLoading || isCheckingCache ? <span className="dash-stat-loading">...</span> : stat.value}
                   </div>
                 )}
 
@@ -218,7 +247,11 @@ export default function DashboardPage() {
                 <span className="dash-panel-title">Live confidence</span>
                 <span className="dash-live-badge">
                   <span className="dash-pill-dot" />
-                  {isLoading ? "Scoring…" : refreshWindow}
+                  {isCheckingCache
+                    ? "Checking cache..."
+                    : isLoading
+                      ? "Scoring..."
+                      : refreshWindow}
                 </span>
               </div>
 
@@ -241,8 +274,8 @@ export default function DashboardPage() {
                   />
                 </svg>
                 <div className="dash-ring-inner">
-                  {isLoading ? (
-                    <span className="dash-ring-loading">…</span>
+                  {isLoading || isCheckingCache ? (
+                    <span className="dash-ring-loading">...</span>
                   ) : (
                     <>
                       <span className="dash-ring-number">{score || "—"}</span>
@@ -341,8 +374,8 @@ export default function DashboardPage() {
                   <span className="dash-panel-title">Agent pipeline</span>
                   <span className="dash-live-badge">
                     <span className="dash-pill-dot" />
-                    {isLoading
-                      ? "Running…"
+                    {isLoading || isCheckingCache
+                      ? isCheckingCache ? "Checking..." : "Running..."
                       : refreshWindow === "Live"
                       ? "5 running"
                       : `5 running • ${refreshWindow}`}
@@ -355,9 +388,9 @@ export default function DashboardPage() {
                       <div className="dash-agent-card-top">
                         <span className="dash-agent-name">{agent.name}</span>
                         <span
-                          className={`dash-agent-badge ${isLoading ? "running" : agent.status}`}
+                          className={`dash-agent-badge ${isLoading || isCheckingCache ? "running" : agent.status}`}
                         >
-                          {isLoading ? "running" : agent.status}
+                          {isLoading || isCheckingCache ? "running" : agent.status}
                         </span>
                       </div>
                       <div className="dash-agent-meta">{agent.meta}</div>
@@ -383,7 +416,7 @@ export default function DashboardPage() {
                   </div>
 
                   <div className="dash-offer-list">
-                    {isLoading && (
+                    {(isLoading || isCheckingCache) && (
                       <div className="dash-offer-placeholder">Matching offers…</div>
                     )}
                     {!isLoading && loanOffers.length === 0 && (
@@ -423,8 +456,12 @@ export default function DashboardPage() {
                         <div className="dash-activity-item">
                           <div className="dash-activity-icon green" />
                           <div className="dash-activity-desc">
-                            <div className="dash-activity-title">Score assessed</div>
-                            <div className="dash-activity-time">Just now</div>
+                            <div className="dash-activity-title">
+                              {assessmentSource === "cache" ? "Score loaded" : "Score assessed"}
+                            </div>
+                            <div className="dash-activity-time">
+                              {assessmentSource === "cache" ? "From oracle history" : "Just now"}
+                            </div>
                           </div>
                           <span className="dash-activity-value green">{assessment.score}</span>
                         </div>
@@ -471,8 +508,10 @@ export default function DashboardPage() {
                     {isLoading && (
                       <div className="dash-activity-item">
                         <div className="dash-activity-desc">
-                          <div className="dash-activity-title">Pipeline running…</div>
-                          <div className="dash-activity-time">This may take 10–30s</div>
+                          <div className="dash-activity-title">
+                            {isCheckingCache ? "Checking oracle history..." : "Pipeline running..."}
+                          </div>
+                          <div className="dash-activity-time">This may take 10-30s</div>
                         </div>
                       </div>
                     )}

@@ -30,6 +30,7 @@ async function readRequestBody(request: Request) {
 const FORWARD_HEADERS = [
   "content-type",
   "x-402-payment-proof",
+  "x-cron-secret",
   "authorization",
 ];
 
@@ -42,6 +43,9 @@ export async function proxyPythonRequest(request: Request, pathname: string) {
   for (const name of FORWARD_HEADERS) {
     const value = request.headers.get(name);
     if (value) forwardedHeaders[name] = value;
+  }
+  if (pathname === "/cron/monitor" && process.env.CRON_SECRET) {
+    forwardedHeaders["x-cron-secret"] = process.env.CRON_SECRET;
   }
   if (!forwardedHeaders["content-type"]) {
     forwardedHeaders["content-type"] = "application/json";

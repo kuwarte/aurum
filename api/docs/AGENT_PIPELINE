@@ -15,9 +15,13 @@ deployed on casper-test. CSPR.cloud wallet data is live. DeFi data (loans,
 repayments, yield, RWA) falls back to empty lists because CSPR.cloud testnet
 does not yet expose those endpoints.
 
-Frontend: Next.js 15 App Router, fully wired to backend. Casper Wallet browser
+Frontend: Next.js 16 App Router, fully wired to backend. Casper Wallet browser
 extension used for wallet connection. All dashboard pages consume live /assess
-data. Oracle Demo page demonstrates full x402 payment flow.
+data. On wallet connect, the dashboard checks /oracle/history first and
+hydrates cached context before running a full /assess. Oracle Demo page
+demonstrates full x402 payment flow. Lending Demo page shows the credit bureau
+use case where a protocol pays the x402 fee and receives score, tier, and
+offers.
 
 LLM JSON parsing: parse_json_response() handles markdown code fences, empty
 responses, JSON-in-prose extraction, and retries on transient Groq errors.
@@ -370,6 +374,31 @@ FUNCTIONS
   get_assessment(wallet)           ->  SELECT most recent row for wallet, returns dict | None
   get_assessment_history(wallet)   ->  SELECT all rows ordered newest first, returns list
 
+TABLE: x402_used_nonces
+-----------------------
+  nonce            text primary key
+  payer_account    text
+  receiver_account text
+  amount_cspr      text
+  network          text
+  payment_reference text
+  consumed_at      timestamptz
+  expires_at       timestamptz
+
+  Used by X402Verifier.verify() to reject replayed nonces across API restarts.
+  Migration: db/migrations/003_x402_nonces_and_getter_cache.sql
+
+TABLE: casper_getter_cache
+--------------------------
+  cache_key   text primary key
+  value       jsonb
+  deploy_hash text
+  updated_at  timestamptz
+  expires_at  timestamptz
+
+  Used by DeploySubmitter.call_getter() as cache-aside storage before submitting
+  another paid getter deploy. Default TTL: CASPER_GETTER_CACHE_TTL_SECONDS=300.
+
 
 ================================================================================
   ON-CHAIN INTEGRATION   (casper/)
@@ -398,6 +427,8 @@ READ PATH (AURUM_DEPLOY_MODE=live)
 
   NOTE: The oracle router (/oracle/query) reads from Supabase as the primary
   low-latency cache. call_getter() is used for cross-validation only.
+  call_getter() now checks Supabase TTL cache first and only submits a getter
+  deploy on cache miss.
 
 DEPLOYED CONTRACTS (casper-test)
 ---------------------------------
@@ -424,6 +455,12 @@ WORKING (live)
   On-chain revoke_credit_score via cron (casper-test, live mode)
   x402 structural payment verification (mock mode)
   x402 on-chain transfer scan verification (live mode, X402_MODE=live)
+  x402 durable nonce persistence in Supabase
+  /assess wallet validation and lightweight per-IP/per-wallet rate limiting
+  /cron/monitor authentication with CRON_SECRET
+  Casper getter TTL cache in Supabase
+  Frontend cached assessment hydration on wallet connect
+  Lending Demo page (/lending-demo)
 
 PARTIAL / MOCK FALLBACK
 -----------------------
@@ -431,8 +468,7 @@ PARTIAL / MOCK FALLBACK
     testnet has no DeFi endpoints). wallet_activity, income, repayment work live.
   Lending pool offers                ->  hardcoded (TrueFi, Maple, Clearpool)
   x402 signature validation          ->  not implemented (on-chain transfer
-    scan is the live payment guard)
-  x402 nonce store                   ->  in-memory (clears on restart)
+    scan is the live payment guard; canonical signing payload is still needed)
 
 NOT YET IMPLEMENTED
 -------------------
@@ -441,8 +477,8 @@ NOT YET IMPLEMENTED
   IPFS attestation storage (Supabase is primary)
   Public API hosting (currently localhost:8000)
   Async pipeline execution (pipeline.invoke() blocks event loop)
-  x402 signature cryptographic validation (on-chain transfer scan is guard)
-  x402 nonce persistence (in-memory, clears on restart)
+  x402 signature cryptographic validation (requires canonical signing payload
+    and wallet/facilitator signature encoding)
 
 
 ================================================================================

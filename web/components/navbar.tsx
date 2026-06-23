@@ -10,6 +10,7 @@ import {
 
 const NAV_LINKS = [
   { label: "Loan Offers", href: "/loan-offers" },
+  { label: "Lending Demo", href: "/lending-demo" },
   { label: "RWA Portfolio", href: "/portfolio" },
 ];
 

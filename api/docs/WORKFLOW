@@ -31,6 +31,7 @@
   +---------------------------------------------------------------------+
   |                    FastAPI  (main.py)                               |
   |                   routers/assess.py                                 |
+  |   validates wallet format + lightweight per-IP/per-wallet rate limit |
   +----------------------------------+----------------------------------+
                                      |  pipeline.invoke({ wallet_address })
                                      v
@@ -183,6 +184,7 @@
 
   Any protocol can query a wallet's stored score without re-running the pipeline.
   Requires a valid x402 payment proof — mock or live depending on X402_MODE.
+  Used nonces are persisted in Supabase to prevent replay across restarts.
 
 
   Third-party protocol
@@ -204,7 +206,7 @@
   |          deadline not expired                              |
   |          receiver == treasury account                      |
   |          network matches                                   |
-  |          nonce not replayed (in-memory cache)              |
+  |          nonce not replayed (Supabase x402_used_nonces)    |
   |          amount >= 1.5 CSPR                                |
   |        Live mode additional check:                         |
   |          verify_transfer_on_chain() scans last 20          |
@@ -236,9 +238,10 @@
                    payer must first send >= 1.5 CSPR to treasury account
                    server scans get-block-transfers on last 20 blocks
 
-  NOTE: signature field is present in the proof schema but is NOT currently
-  validated cryptographically. On-chain transfer presence is the live guard.
-  Signature validation is a TODO before production.
+  NOTE: signature field is required and structurally validated, but is NOT
+  currently validated cryptographically. On-chain transfer presence is the live
+  guard. Signature validation is blocked until the canonical proof signing
+  payload and signature encoding are finalized.
 
 
 ================================================================================
@@ -248,6 +251,8 @@
   Called every 15 minutes (by Vercel cron or external scheduler).
 
   POST /cron/monitor
+  Header: X-Cron-Secret: <CRON_SECRET>
+  or Authorization: Bearer <CRON_SECRET>
         |
         v
   Supabase: SELECT * FROM assessments WHERE credential_active = true
@@ -339,7 +344,8 @@
   casper/deploy_submitter.py  (DeploySubmitter)
    |- submit_contract_call()   -> casper-client put-deploy --session-hash <hex>
    |- check_deploy_status()    -> casper-client get-transaction (fallback get-deploy)
-   |- call_getter()            -> submit_contract_call() + poll 60s + _extract_return_value()
+   |- call_getter()            -> Supabase TTL cache lookup, then submit_contract_call()
+                                  + poll 60s + _extract_return_value() on cache miss
    |- _extract_return_value()  -> parse WriteCLValue from execution effects (reversed scan)
    |- verify_transfer_on_chain() -> get-node-status + get-block-transfers (last 20 blocks)
    |- loaded via load_submitter_from_env()
@@ -350,7 +356,7 @@
   casper/x402.py  (X402Verifier)
    |- verify()  mock mode: structural checks only (deadline, receiver, nonce, amount)
    |- verify()  live mode: structural checks + verify_transfer_on_chain()
-   |- nonce cache: in-memory Set (cleared on server restart — TODO: persist in Supabase)
+   |- nonce cache: Supabase x402_used_nonces table (migration 003)
    +- loaded via load_x402_verifier_from_env()
 
 
@@ -411,6 +417,11 @@
                        live  ->  structure check + on-chain transfer scan
                                [currently: mock -- set to live for real payments]
 
+  CRON_SECRET          required secret for POST /cron/monitor
+
+  CASPER_GETTER_CACHE_TTL_SECONDS
+                       optional TTL for Supabase getter cache, default 300
+
   Contract env vars (both required — CONTRACT_HASH preferred):
     CREDIT_REGISTRY_CONTRACT_HASH      contract-393bd1...  (callable, preferred)
     CREDIT_REGISTRY_HASH               hash-804fe9...      (package, fallback)
@@ -427,6 +438,8 @@
 ================================================================================
 
   POST  /assess                  run full 6-agent pipeline, mint score on-chain
+                                 validates Casper wallet address and rate limits
+                                 repeated requests per IP+wallet
                                  returns: score, sub_scores, shap, tier, default_prob,
                                  default_prob_60d/90d, early_warning_flags, risk_analysis,
                                  fraud_score, fraud_flags, tx_hash, attestation_hash,
@@ -435,6 +448,7 @@
   GET   /oracle/history?wallet=  return full score history (no payment required)
   GET   /oracle/payment-info     return x402 payment requirements
   POST  /cron/monitor            re-score all active credentials, revoke on-chain
+                                 requires CRON_SECRET header/bearer auth
   GET   /health                  system status, mode flags, contract check
   GET   /config                  public config (contract hashes, network)
   GET   /docs                    OpenAPI (Swagger UI)
@@ -549,16 +563,18 @@
     testnet has no confirmed loan/yield/RWA endpoints yet. Transfer history
     (wallet_activity, income, repayment) works live today.
 
-  - x402 signature field in proof is not cryptographically validated.
-    On-chain transfer scan is the live payment guard.  Add EdDSA signature
-    verification before production.
+  - x402 signature field in proof is required but not cryptographically
+    validated. On-chain transfer scan is the live payment guard. Add signature
+    verification after the canonical signing payload and signature encoding are
+    finalized.
 
-  - x402 nonce cache is in-memory -- server restart clears replay protection.
-    TODO: persist nonces in Supabase before production.
+  - x402 nonce replay protection is persisted in Supabase. Migration 003 must
+    be applied before x402-protected routes are used in an environment.
 
-  - call_getter() costs real CSPR gas (put-deploy) and takes ~60s to poll.
-    For high-frequency reads, cache results in Supabase or Redis.
-    The oracle router already uses Supabase as the primary low-latency cache.
+  - call_getter() costs real CSPR gas (put-deploy) and takes ~60s to poll on
+    cache miss. Supabase TTL cache is used before submitting another getter
+    deploy. The oracle router already uses Supabase as the primary low-latency
+    cache.
 
   - casper-client put-deploy is deprecated in v5; it still works for Odra v1
     contracts (hash- addresses). Migration to put-transaction invocable-entity

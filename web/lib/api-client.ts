@@ -148,6 +148,13 @@ export type OracleHistoryEntry = {
   timestamp: string;
   tx_hash?: string;
   fraud_score?: number;
+  sub_scores?: Partial<SubScores>;
+  shap?: ShapBreakdown;
+  default_prob?: number;
+  fraud_flags?: string[];
+  attestation_hash?: string;
+  loan_offers?: LoanOffer[];
+  active?: boolean;
 };
 
 export type OracleHistoryResponse = {

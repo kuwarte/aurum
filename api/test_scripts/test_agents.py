@@ -16,17 +16,21 @@ Usage:
 """
 
 import json
-from dotenv import load_dotenv
+import sys
+from pathlib import Path
+
+from wallet_env import get_test_wallet
+
+API_DIR = Path(__file__).resolve().parents[1]
+if str(API_DIR) not in sys.path:
+    sys.path.insert(0, str(API_DIR))
+
 from pipeline.state import PipelineState
-
-
-# Load environment configuration before importing agents
-load_dotenv()
 
 
 # Sample initial state for testing
 INITIAL_STATE: PipelineState = {
-    "wallet_address": "0xtest123abc",
+    "wallet_address": get_test_wallet(),
     "raw_wallet_data": {},
     "sub_scores": {},
     "credit_score": 0,

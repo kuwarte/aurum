@@ -1,4 +1,7 @@
 import os
+from datetime import datetime, timezone
+from typing import Any
+
 from supabase import create_client, Client
 
 def get_client() -> Client:
@@ -66,10 +69,67 @@ def get_assessment_history(wallet_address: str, limit: int = 20) -> list:
     client = get_client()
     response = (
         client.table("assessments")
-        .select("credit_score, risk_tier, created_at, tx_hash, fraud_score")
+        .select("*")
         .eq("wallet_address", wallet_address)
         .order("created_at", desc=True)
         .limit(limit)
         .execute()
     )
     return response.data or []
+
+
+def consume_x402_nonce(nonce: str, proof_metadata: dict[str, Any], expires_at: int) -> None:
+    """
+    Persist a consumed x402 nonce.
+
+    Supabase/PostgREST raises on duplicate nonce because nonce is the primary
+    key. Callers should treat any exception as proof verification failure.
+    """
+    client = get_client()
+    expires_dt = datetime.fromtimestamp(expires_at, tz=timezone.utc).isoformat()
+    client.table("x402_used_nonces").insert({
+        "nonce": nonce,
+        "payer_account": proof_metadata.get("payer_account", ""),
+        "receiver_account": proof_metadata.get("receiver_account", ""),
+        "amount_cspr": str(proof_metadata.get("amount_cspr", "")),
+        "network": proof_metadata.get("network", ""),
+        "payment_reference": proof_metadata.get("payment_reference", ""),
+        "expires_at": expires_dt,
+    }).execute()
+
+
+def get_cached_getter(cache_key: str) -> dict[str, Any] | None:
+    """Return a non-expired Casper getter cache entry."""
+    client = get_client()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    response = (
+        client.table("casper_getter_cache")
+        .select("value, deploy_hash, expires_at")
+        .eq("cache_key", cache_key)
+        .gt("expires_at", now_iso)
+        .limit(1)
+        .execute()
+    )
+    if response.data:
+        return response.data[0]
+    return None
+
+
+def set_cached_getter(
+    cache_key: str,
+    value: Any,
+    deploy_hash: str,
+    ttl_seconds: int,
+) -> None:
+    """Upsert a Casper getter cache entry with a TTL."""
+    client = get_client()
+    expires_at = datetime.fromtimestamp(
+        datetime.now(timezone.utc).timestamp() + ttl_seconds,
+        tz=timezone.utc,
+    ).isoformat()
+    client.table("casper_getter_cache").upsert({
+        "cache_key": cache_key,
+        "value": value,
+        "deploy_hash": deploy_hash,
+        "expires_at": expires_at,
+    }).execute()

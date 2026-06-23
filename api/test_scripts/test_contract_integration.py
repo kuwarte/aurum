@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from casper.contracts import load_contracts_from_env
 from casper.client import load_client_from_env
+from wallet_env import get_test_wallet
 from datetime import datetime, timedelta
 
 
@@ -55,7 +56,7 @@ def test_contract_connection():
         now_ts = int(datetime.utcnow().timestamp())
         expiry_ts = int((datetime.utcnow() + timedelta(days=90)).timestamp())
         
-        test_wallet = "account-hash-0000000000000000000000000000000000000000000000000000000000000001"
+        test_wallet = get_test_wallet()
         
         credit_deploy = contracts.issue_credit_score(
             borrower=test_wallet,

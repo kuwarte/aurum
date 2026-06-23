@@ -1,17 +1,20 @@
 """Quick test to verify CSPR.cloud live mode is working."""
 import os
+import sys
 from dotenv import load_dotenv
 load_dotenv()
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from cspr_cloud.wallet import load_wallet_service_from_env
+from wallet_env import get_test_wallet
 
 svc = load_wallet_service_from_env()
 print(f"mode: {svc.config.mode}")
 print(f"base_url: {svc.config.base_url}")
 print(f"key set: {bool(svc.config.api_key)}")
-print(f"key preview: {svc.config.api_key[:8]}..." if svc.config.api_key else "NO KEY")
 
-account = os.getenv("CASPER_ACCOUNT_HASH", "")
+account = get_test_wallet()
 print(f"account: {account}")
 
 try:

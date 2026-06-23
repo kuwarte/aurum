@@ -10,6 +10,7 @@ import logging
 from fastapi import APIRouter, Query, HTTPException, Request
 from fastapi.responses import JSONResponse
 from db.supabase import get_assessment, get_assessment_history
+from validation import normalize_wallet_address
 from casper.x402 import (
     X402Verifier,
     X402PaymentProof,
@@ -43,35 +44,33 @@ async def query_credit_profile(
     payment_requirement = _verifier.build_payment_requirement()
     proof_header = request.headers.get("X-402-Payment-Proof")
 
+    wallet = normalize_wallet_address(wallet)
+
     # --- No proof header ---
     if not proof_header:
-        return HTTPException(status_code=402, detail=payment_requirement)
+        return JSONResponse(
+            status_code=402,
+            content={"error": "payment_required", "payment_requirement": payment_requirement},
+        )
 
     # --- Parse proof ---
     try:
         proof_dict = json.loads(proof_header)
-        proof = X402PaymentProof(
-            payer_account=proof_dict["payer_account"],
-            receiver_account=proof_dict["receiver_account"],
-            amount_cspr=str(proof_dict["amount_cspr"]),
-            nonce=proof_dict["nonce"],
-            deadline_epoch_seconds=int(proof_dict["deadline_epoch_seconds"]),
-            network=proof_dict["network"],
-            signature=proof_dict["signature"],
-            payment_reference=proof_dict.get("payment_reference", ""),
-        )
-    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-        from fastapi.responses import JSONResponse
+        proof = X402PaymentProof.from_dict(proof_dict)
+    except (json.JSONDecodeError, TypeError, X402VerificationError) as exc:
         return JSONResponse(
             status_code=402,
-            content={"error": "invalid_proof_format", "payment_requirement": payment_requirement},
+            content={
+                "error": "invalid_proof_format",
+                "detail": str(exc),
+                "payment_requirement": payment_requirement,
+            },
         )
 
     # --- Verify proof ---
     try:
         _verifier.verify(proof)
     except X402VerificationError as exc:
-        from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=402,
             content={"error": str(exc), "payment_requirement": payment_requirement},
@@ -101,6 +100,7 @@ async def query_credit_history(
     limit: int = Query(20, description="Max history entries to return"),
 ):
     """Query full credit score history for a wallet (no payment gate)."""
+    wallet = normalize_wallet_address(wallet)
     history = get_assessment_history(wallet, limit=limit)
     return {
         "wallet_address": wallet,
@@ -111,6 +111,13 @@ async def query_credit_history(
                 "timestamp": row.get("created_at"),
                 "tx_hash": row.get("tx_hash", ""),
                 "fraud_score": row.get("fraud_score", 0),
+                "sub_scores": row.get("sub_scores", {}),
+                "shap": row.get("shap_breakdown", {}),
+                "default_prob": row.get("default_prob_30d", 0),
+                "fraud_flags": row.get("fraud_flags", []),
+                "attestation_hash": row.get("attestation_hash", ""),
+                "loan_offers": row.get("loan_offers", []),
+                "active": row.get("credential_active", True),
             }
             for row in history
         ],

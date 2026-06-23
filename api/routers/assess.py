@@ -1,12 +1,74 @@
-from fastapi import APIRouter
+import logging
+import time
+from collections import defaultdict, deque
+
+from fastapi import APIRouter, HTTPException, Request
 from pipeline.graph import pipeline
+from validation import normalize_wallet_address
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+_RATE_LIMIT_WINDOW_SECONDS = 60
+_RATE_LIMIT_MAX_REQUESTS = 5
+_rate_limit_buckets: dict[str, deque[float]] = defaultdict(deque)
+
+
+def _client_key(request: Request, wallet_address: str) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    client_ip = forwarded_for.split(",")[0].strip()
+    if not client_ip and request.client:
+        client_ip = request.client.host
+    return f"{client_ip or 'unknown'}:{wallet_address}"
+
+
+def _enforce_rate_limit(request: Request, wallet_address: str) -> None:
+    key = _client_key(request, wallet_address)
+    now = time.monotonic()
+    bucket = _rate_limit_buckets[key]
+
+    while bucket and now - bucket[0] > _RATE_LIMIT_WINDOW_SECONDS:
+        bucket.popleft()
+
+    if len(bucket) >= _RATE_LIMIT_MAX_REQUESTS:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "rate_limited",
+                "message": "Too many assessment requests. Please wait and try again.",
+            },
+        )
+
+    bucket.append(now)
 
 @router.post("/assess")
-async def assess(body: dict):
-    wallet = body.get("wallet_address")
-    result = pipeline.invoke({"wallet_address": wallet})
+async def assess(body: dict, request: Request):
+    if not isinstance(body, dict):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "invalid_request",
+                "message": "Request body must be a JSON object",
+            },
+        )
+
+    wallet = normalize_wallet_address(body.get("wallet_address"))
+    _enforce_rate_limit(request, wallet)
+
+    try:
+        result = pipeline.invoke({"wallet_address": wallet})
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Assessment pipeline failed for wallet %s", wallet)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "assessment_failed",
+                "message": "Assessment failed. Please retry later.",
+            },
+        ) from exc
+
     return {
         # Credit
         "score":               result["credit_score"],

@@ -28,6 +28,7 @@ const NAV: NavGroup[] = [
     items: [
       { label: "RWA Portfolio", href: "/portfolio" },
       { label: "Loan Offers", href: "/loan-offers" },
+      { label: "Lending Demo", href: "/lending-demo" },
       { label: "History", href: "/history" },
     ],
   },

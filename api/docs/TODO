@@ -84,7 +84,7 @@
   PRIORITY 2 — HIGH  (product is incomplete without these)
 ================================================================================
 
-[ ] DEFI SCORING DIMENSIONS — LIVE DATA
+[x] DEFI SCORING DIMENSIONS — LIVE DATA
     DONE (Option A applied). In live mode (CSPR_CLOUD_MODE=live), dimensions
     with no CSPR.cloud endpoint (defi, rwa, dao) now return NEUTRAL_SCORE=50
     instead of 0. "Insufficient data" no longer scores the same as bad behavior.
@@ -93,6 +93,7 @@
     File: api/agents/credit_agent.py
 
 [ ] DEPLOY API TO PUBLIC HOST
+    MANUAL / BLOCKED BY EXTERNAL SETUP.
     API is only accessible at localhost:8000.
     Deploy to Render / Railway / VPS so frontend can be publicly hosted.
     Update CORS origins in api/main.py to match deployed domain.
@@ -100,17 +101,20 @@
     File: api/main.py → origins list, web/.env.local
 
 [ ] X402 SIGNATURE VALIDATION
-    The payment proof signature field is present but never cryptographically
-    validated. On-chain transfer scan is the only live guard.
-    For production: verify payer signed the proof with their Ed25519 key.
+    MANUAL / BLOCKED BY PROTOCOL SIGNING REQUIREMENT.
+    The payment proof signature field is now required and structurally
+    validated, but it is not cryptographically verified yet. On-chain transfer
+    scan remains the live guard. Missing requirement: canonical proof signing
+    payload and exact Ed25519/Secp256k1 signature encoding from the
+    wallet/facilitator flow.
     File: api/casper/x402.py → X402Verifier.verify()
 
-[ ] X402 NONCE PERSISTENCE
-    Nonces are stored in Python in-memory set(). Server restart clears
-    replay protection. A replayed proof within the same nonce window
-    will be accepted after restart.
-    Fix: persist consumed nonces in Supabase with TTL.
-    File: api/casper/x402.py → X402Verifier._used_nonces
+[x] X402 NONCE PERSISTENCE
+    DONE. Consumed nonces are persisted to Supabase table x402_used_nonces.
+    Duplicate insert failures reject reused nonces. Migration 003 adds the
+    nonce table and TTL index.
+    Files: api/casper/x402.py, api/db/supabase.py,
+           api/db/migrations/003_x402_nonces_and_getter_cache.sql
 
 [x] RUN SUPABASE MIGRATION 002
     credential_active column must be added to assessments table.
@@ -118,11 +122,12 @@
       ALTER TABLE assessments ADD COLUMN IF NOT EXISTS credential_active boolean default true;
     File: api/db/migrations/002_add_credential_active.sql
 
-[ ] WIRE CASPER WALLET AUTO-TRIGGER ASSESSMENT
+[x] WIRE CASPER WALLET AUTO-TRIGGER ASSESSMENT
     On wallet connect, immediately auto-submit POST /assess.
-    Currently dashboard auto-triggers if isIdle — but first checks
-    Supabase history. If assessment exists, show cached result without
-    re-running full pipeline (10–30s).
+    DONE. Dashboard checks /oracle/history first. If cached assessment exists,
+    AssessmentContext is populated without running the pipeline. If no cached
+    record exists, it runs /assess automatically. Re-assess still forces a full
+    pipeline rerun.
     File: web/app/dashboard/page.tsx, web/lib/use-assessment.tsx
 
 
@@ -130,41 +135,54 @@
   PRIORITY 3 — MEDIUM  (correctness and robustness improvements)
 ================================================================================
 
-[ ] SUPABASE CREDENTIAL LOOKUP ON CONNECT
+[x] SUPABASE CREDENTIAL LOOKUP ON CONNECT
     On wallet connect, first call GET /oracle/history. If assessment exists,
-    populate AssessmentContext from cached data immediately. Only run full
-    pipeline on explicit "Re-assess" button click. Avoids 10–30s wait for
-    returning users.
-    File: web/lib/use-assessment.tsx, web/app/dashboard/page.tsx
+    populate AssessmentContext from cached data immediately. DONE. Full
+    /assess still runs automatically only when no cached result exists, and
+    "Re-assess" remains the manual rerun path.
+    Files: web/lib/use-assessment.tsx, web/app/dashboard/page.tsx,
+           api/routers/oracle.py, api/db/supabase.py
 
-[ ] LENDING DEMO PAGE
+[x] LENDING DEMO PAGE
     Add /lending-demo showing how a DeFi protocol uses Aurum:
     "Protocol pays 1.5 CSPR → Aurum returns score + offers → underwrite"
     Demonstrates credit bureau role for judges/viewers.
-    File: web/app/lending-demo/page.tsx
+    DONE. Page added and linked from dashboard sidebar and top nav.
+    Files: web/app/lending-demo/page.tsx, web/components/dashboard-sidebar.tsx,
+           web/components/navbar.tsx
 
-[ ] ADD /assess REQUEST VALIDATION
+[x] ADD /assess REQUEST VALIDATION
     POST /assess currently accepts any dict.
     Add: wallet_address required + non-empty, format validation,
     rate limiting per IP.
-    File: api/routers/assess.py
+    DONE. Accepts Casper account-hash, bare account hash, or 01/02-prefixed
+    public key. Invalid input returns safe 422 errors; rate limit returns 429.
+    Files: api/routers/assess.py, api/validation.py
 
-[ ] ADD CRON MONITOR AUTHENTICATION
+[x] ADD CRON MONITOR AUTHENTICATION
     POST /cron/monitor is publicly accessible with no auth.
     Add secret header check (CRON_SECRET env var) before processing.
-    File: api/routers/cron.py
+    DONE. Requires X-Cron-Secret or Authorization: Bearer <secret>. Next proxy
+    injects server-side CRON_SECRET for /api/cron/monitor.
+    Files: api/routers/cron.py, web/lib/python-gateway.ts
 
-[ ] HANDLE call_getter() GAS COST AND LATENCY
+[x] HANDLE call_getter() GAS COST AND LATENCY
     call_getter() submits a real put-deploy and polls up to 60s.
     For high-read endpoints, cache in Supabase with TTL.
-    Files: api/casper/deploy_submitter.py, api/routers/oracle.py
+    DONE. call_getter() uses cache-aside Supabase TTL entries before submitting
+    another getter deploy. Default TTL: CASPER_GETTER_CACHE_TTL_SECONDS=300.
+    Files: api/casper/deploy_submitter.py, api/db/supabase.py,
+           api/db/migrations/003_x402_nonces_and_getter_cache.sql
 
-[ ] FIX get_cspr_balance() STUB IN client.py
+[x] FIX get_cspr_balance() STUB IN client.py
     CasperClient.get_cspr_balance() returns a TODO dict.
     Not used in production paths but should call query-balance via CLI.
+    DONE. Uses casper-client query-balance candidate purse identifiers and
+    returns structured success/failure without printing secrets.
     File: api/casper/client.py
 
 [ ] SWITCH X402_MODE TO LIVE
+    MANUAL / BLOCKED BY REAL PAYMENT TEST.
     X402_MODE=mock currently. Change to live once real CSPR payment test passes.
     Requires sender to transfer >= 1.5 CSPR to treasury before querying oracle.
     File: api/.env (currently: X402_MODE=mock)
@@ -261,6 +279,13 @@
 [x] Expand /assess response to return full pipeline state (sub_scores,
     fraud_score, fraud_flags, early_warning_flags, attestation_summary,
     default_prob_60d/90d, raw_wallet_data, etc.)
+[x] Add /assess wallet validation and lightweight rate limiting
+[x] Protect POST /cron/monitor with CRON_SECRET
+[x] Persist x402 used nonces in Supabase (migration 003)
+[x] Add Supabase TTL cache for Casper getter deploy reads
+[x] Implement CasperClient.get_cspr_balance() via casper-client query-balance
+[x] Hydrate frontend assessment context from /oracle/history before /assess
+[x] Add /lending-demo protocol-paid x402 underwriting demo
 [x] Update api/docs/TODO, WORKFLOW, AGENT_PIPELINE (this update)
 
 

@@ -27,7 +27,9 @@ TODO:
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import json
 import os
+import subprocess
 from typing import Any, Dict, Optional
 
 import httpx
@@ -113,17 +115,74 @@ class CasperClient:
         }
 
     def get_cspr_balance(self) -> Dict[str, Any]:
-        """Expose a conservative balance lookup placeholder for deploy scripts.
+        """Query the configured account's CSPR balance with casper-client."""
 
-        TODO: Replace this with a real balance query once the final Casper SDK
-        and RPC parsing path are pinned.
-        """
+        casper_client_bin = os.getenv("CASPER_CLIENT_BIN", "casper-client")
+        account_hash = self.config.account_hash.replace("account-hash-", "")
+        candidates = [
+            [
+                casper_client_bin,
+                "query-balance",
+                "--node-address",
+                self.config.rpc_url,
+                "--purse-identifier",
+                f"main-purse-under-account-hash-{account_hash}",
+            ],
+            [
+                casper_client_bin,
+                "query-balance",
+                "--node-address",
+                self.config.rpc_url,
+                "--purse-identifier",
+                f"main-purse-under-public-key-{self.config.public_key}",
+            ],
+        ]
+
+        last_error = ""
+        for cmd in candidates:
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=self.config.request_timeout_seconds,
+                )
+            except FileNotFoundError:
+                return {
+                    "success": False,
+                    "account_hash": self.config.account_hash,
+                    "network_name": self.config.network_name,
+                    "error": (
+                        f"{casper_client_bin} not found. Set CASPER_CLIENT_BIN "
+                        "to a casper-client executable."
+                    ),
+                }
+            except subprocess.TimeoutExpired:
+                last_error = "casper-client query-balance timed out"
+                continue
+
+            if result.returncode != 0:
+                last_error = result.stderr.strip() or result.stdout.strip()
+                continue
+
+            parsed = _parse_balance_output(result.stdout)
+            if parsed is not None:
+                return {
+                    "success": True,
+                    "account_hash": self.config.account_hash,
+                    "network_name": self.config.network_name,
+                    "balance_motes": parsed,
+                    "balance_cspr": str(parsed / 1_000_000_000),
+                    "source": "casper-client query-balance",
+                }
+
+            last_error = "Unable to parse casper-client query-balance output"
 
         return {
+            "success": False,
             "account_hash": self.config.account_hash,
             "network_name": self.config.network_name,
-            "rpc_url": self.config.rpc_url,
-            "balance_lookup": "TODO_real_balance_query",
+            "error": last_error or "casper-client query-balance failed",
         }
 
     def close(self) -> None:
@@ -168,3 +227,24 @@ def _require_env(name: str) -> str:
     if not value:
         raise CasperConfigError(f"Missing required environment variable: {name}")
     return value
+
+
+def _parse_balance_output(output: str) -> int | None:
+    try:
+        payload = json.loads(output)
+        result = payload.get("result", payload)
+        for key in ("balance_value", "balance", "motes"):
+            value = result.get(key) if isinstance(result, dict) else None
+            if value is not None:
+                return int(value)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+
+    for line in output.splitlines():
+        digits = "".join(ch for ch in line if ch.isdigit())
+        if digits:
+            try:
+                return int(digits)
+            except ValueError:
+                continue
+    return None

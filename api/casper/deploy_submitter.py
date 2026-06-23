@@ -27,6 +27,7 @@ import json
 import subprocess
 import os
 import re
+import hashlib
 import time as _time
 from typing import Any, Dict, Optional
 from pathlib import Path
@@ -193,6 +194,23 @@ class DeploySubmitter:
 
         Returns dict with: success, value (parsed), deploy_hash, error
         """
+        cache_key = self._getter_cache_key(contract_hash, entrypoint, args)
+        cache_ttl = int(os.getenv("CASPER_GETTER_CACHE_TTL_SECONDS", "300"))
+        if cache_ttl > 0:
+            try:
+                from db.supabase import get_cached_getter
+
+                cached = get_cached_getter(cache_key)
+                if cached:
+                    return {
+                        "success": True,
+                        "value": cached.get("value"),
+                        "deploy_hash": cached.get("deploy_hash", ""),
+                        "source": "supabase_cache",
+                    }
+            except Exception:
+                pass
+
         result = self.submit_contract_call(
             contract_hash=contract_hash,
             entrypoint=entrypoint,
@@ -218,6 +236,19 @@ class DeploySubmitter:
             }
 
         parsed_value = self._extract_return_value(deploy_hash)
+        if cache_ttl > 0:
+            try:
+                from db.supabase import set_cached_getter
+
+                set_cached_getter(
+                    cache_key=cache_key,
+                    value=parsed_value,
+                    deploy_hash=deploy_hash,
+                    ttl_seconds=cache_ttl,
+                )
+            except Exception:
+                pass
+
         return {
             "success": True,
             "deploy_hash": deploy_hash,
@@ -421,6 +452,25 @@ class DeploySubmitter:
             # Fallback: grab first 64-char hex string
             match = re.search(r'\b[0-9a-f]{64}\b', output)
             return match.group(0) if match else ""
+
+    def _getter_cache_key(
+        self,
+        contract_hash: str,
+        entrypoint: str,
+        args: Dict[str, Any],
+    ) -> str:
+        raw = json.dumps(
+            {
+                "chain_name": self.chain_name,
+                "contract_hash": contract_hash,
+                "entrypoint": entrypoint,
+                "args": args,
+            },
+            sort_keys=True,
+            default=str,
+        )
+        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        return f"casper-getter:{digest}"
 
 
 def load_submitter_from_env() -> "DeploySubmitter":

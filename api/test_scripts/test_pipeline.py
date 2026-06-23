@@ -20,10 +20,7 @@ from pathlib import Path
 api_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(api_dir))
 
-from dotenv import load_dotenv
-
-# Load environment configuration before importing agent modules
-load_dotenv()
+from wallet_env import get_test_wallet
 
 def test_pipeline():
     """Test the full assessment pipeline."""
@@ -106,7 +103,7 @@ def test_pipeline():
     # Test 7: Run full pipeline
     print("[/] Test 7: Running full LangGraph pipeline...")
     try:
-        result = pipeline.invoke({"wallet_address": "0xtest123abc"})
+        result = pipeline.invoke({"wallet_address": get_test_wallet()})
         
         # Verify all required fields in output
         required_fields = [
