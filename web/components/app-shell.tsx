@@ -14,7 +14,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith("/portfolio") ||
     pathname.startsWith("/history") ||
     pathname.startsWith("/compliance") ||
-    pathname.startsWith("/oracle-demo");
+    pathname.startsWith("/oracle-demo") ||
+    pathname.startsWith("/lending-demo");
 
   if (isDashboard) {
     return <>{children}</>;

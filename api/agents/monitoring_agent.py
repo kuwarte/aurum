@@ -33,16 +33,25 @@ def monitoring_agent(state: PipelineState) -> PipelineState:
         credential_active = decision.get("credential_active", True)
         monitoring_reasoning = decision.get("reasoning", "Standard monitoring.")
         monitoring_action = decision.get("action", "maintain")
+        # Override LLM revocation if the only reason is thin history / low score
+        # A new wallet with no fraud flags should keep its credential
+        fraud_score = state.get("fraud_score", 0)
+        fraud_flags = state.get("fraud_flags", [])
+        if not credential_active and fraud_score < 0.5 and len(fraud_flags) == 0:
+            credential_active = True
+            monitoring_action = "monitor"
+            monitoring_reasoning = "Overriding LLM revocation — no fraud flags present. Thin wallet history does not warrant revocation."
         llm_fields = AgentLLM.status_fields(state, fallback_used=False)
     else:
         credential_active = True
-        monitoring_reasoning = "Rule-based monitoring"
+        monitoring_reasoning = "Rule-based monitoring — credential active by default."
         monitoring_action = "maintain"
         llm_fields = AgentLLM.status_fields(state, fallback_used=True)
-        
-        if state.get("fraud_score", 0) > 0.5:
+
+        # Only revoke on explicit high fraud — not just low score
+        if state.get("fraud_score", 0) > 0.5 and len(state.get("fraud_flags", [])) > 0:
             credential_active = False
-            monitoring_reasoning = "Fraud score exceeds threshold (0.5)"
+            monitoring_reasoning = f"Fraud score {state.get('fraud_score', 0):.2f} with flags: {state.get('fraud_flags', [])}"
             monitoring_action = "revoke"
     
     return {

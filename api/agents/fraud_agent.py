@@ -37,19 +37,29 @@ def fraud_agent(state: PipelineState) -> PipelineState:
         }
     
     print("Using fallback fraud detection rules.")
-    daily_avg_tx = raw_wallet_data.get("tx_count", 150) / max(wallet_age_days, 1)
+    # Use actual volume summary data if available
+    volume_summary = raw_wallet_data.get("volume_summary", {})
+    actual_diversity = volume_summary.get("counterparty_diversity",
+                       raw_wallet_data.get("counterparty_diversity", 5))
+    tx_count = volume_summary.get("transaction_count",
+               raw_wallet_data.get("tx_count", 10))
+    daily_avg_tx = tx_count / max(wallet_age_days, 1)
+
     fraud_score = 0.0
     fraud_flags = []
-    
+
     if wallet_age_days < 7:
         fraud_flags.append("fresh_wallet_sybil_risk")
         fraud_score += 0.2
-    
-    if daily_avg_tx > 5:
+
+    # Only flag high frequency if genuinely suspicious (>20 tx/day)
+    if daily_avg_tx > 20:
         fraud_flags.append("high_transaction_frequency")
         fraud_score += 0.1
-    
-    if raw_wallet_data.get("counterparty_diversity", 23) < 3:
+
+    # Only flag low diversity if wallet has been active for a while
+    # A new wallet naturally has few counterparties — not suspicious
+    if actual_diversity < 3 and tx_count > 10:
         fraud_flags.append("low_counterparty_diversity")
         fraud_score += 0.15
     

@@ -56,8 +56,17 @@ async def query_credit_profile(
     # --- Parse proof ---
     try:
         proof_dict = json.loads(proof_header)
-        proof = X402PaymentProof.from_dict(proof_dict)
-    except (json.JSONDecodeError, TypeError, X402VerificationError) as exc:
+        proof = X402PaymentProof(
+            payer_account=proof_dict["payer_account"],
+            receiver_account=proof_dict["receiver_account"],
+            amount_cspr=str(proof_dict["amount_cspr"]),
+            nonce=proof_dict["nonce"],
+            deadline_epoch_seconds=int(proof_dict["deadline_epoch_seconds"]),
+            network=proof_dict["network"],
+            signature=proof_dict.get("signature", ""),
+            payment_reference=proof_dict.get("payment_reference", ""),
+        )
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
         return JSONResponse(
             status_code=402,
             content={
